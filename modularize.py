@@ -45,7 +45,7 @@ def main():
     print(f"Using device: {device}")
 
     # Load tokenizer and model
-    model_name = "meta-llama/Llama-2-7b-hf"  # or the path to your local model
+    model_name = "meta-llama/Llama-3.1-8B"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16)
     model.to(device)
