@@ -7,6 +7,7 @@ from tqdm import tqdm
 from torch.cuda.amp import GradScaler
 import warnings
 import matplotlib.pyplot as plt
+import datetime
 
 class SlidingWindowDataset(Dataset):
     def __init__(self, file_path, tokenizer, max_length, stride):
@@ -89,7 +90,7 @@ def kl_div_loss(student_logits, teacher_logits, temperature=1.0, k=200):
 def get_teacher_outputs(teacher_model, batch):
     return teacher_model(**batch)
 
-def evaluate_and_store(student_model, teacher_model, batch, tokenizer, eval_dir, step):
+def evaluate_and_store(student_model, teacher_model, batch, tokenizer, eval_dir, epoch, step):
     student_model.eval()
     teacher_model.eval()
     
@@ -139,13 +140,14 @@ def evaluate_and_store(student_model, teacher_model, batch, tokenizer, eval_dir,
             })
     
     # Save results to JSON file
-    os.makedirs(eval_dir, exist_ok=True)
-    with open(os.path.join(eval_dir, f'eval_step_{step}.json'), 'w') as f:
+    epoch_dir = os.path.join(eval_dir, f'epoch_{epoch}')
+    os.makedirs(epoch_dir, exist_ok=True)
+    with open(os.path.join(epoch_dir, f'eval_step_{step}.json'), 'w') as f:
         json.dump(results, f, indent=2)
     
     student_model.train()
 
-def train_epoch(student_model, teacher_model, dataloader, optimizer, device, scaler, tokenizer, alpha=0.5, accumulation_steps=4):
+def train_epoch(student_model, teacher_model, dataloader, optimizer, device, scaler, tokenizer, eval_dir, epoch, alpha=0.5, accumulation_steps=4):
     student_model.train()
     teacher_model.eval()
     total_loss = 0
@@ -153,9 +155,6 @@ def train_epoch(student_model, teacher_model, dataloader, optimizer, device, sca
     total_kd_loss = 0
     num_batches = len(dataloader)
     optimizer.zero_grad()
-
-    eval_dir = "evaluations"
-    os.makedirs(eval_dir, exist_ok=True)
 
     for i, batch in enumerate(tqdm(dataloader, desc="Training")):
         batch = {k: v.to(device) for k, v in batch.items()}
@@ -189,7 +188,7 @@ def train_epoch(student_model, teacher_model, dataloader, optimizer, device, sca
             print(f"Total Loss: {loss.item() * accumulation_steps:.4f}")
             print(f"NTP Loss: {ntp_loss.item():.4f}")
             print(f"KD Loss: {kd_loss.item():.4f}")
-            evaluate_and_store(student_model, teacher_model, batch, tokenizer, eval_dir, i+1)
+            evaluate_and_store(student_model, teacher_model, batch, tokenizer, eval_dir, epoch, i+1)
         
         del teacher_outputs, teacher_logits, student_outputs, student_logits
         torch.cuda.empty_cache()
@@ -252,6 +251,17 @@ def main():
     scaler = torch.amp.GradScaler()
     num_epochs = 100
 
+    # Create a unique run directory based on timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = f"runs/run_{timestamp}"
+    os.makedirs(run_dir, exist_ok=True)
+
+    eval_dir = os.path.join(run_dir, "evaluations")
+    os.makedirs(eval_dir, exist_ok=True)
+
+    save_dir = os.path.join(run_dir, "models/student")
+    os.makedirs(save_dir, exist_ok=True)
+
     results = {
         'train_losses': [],
         'train_ntp_losses': [],
@@ -261,7 +271,7 @@ def main():
     }
 
     for epoch in range(num_epochs):
-        train_loss, train_ntp_loss, train_kd_loss = train_epoch(student_model, teacher_model, train_loader, optimizer, device, scaler, tokenizer)
+        train_loss, train_ntp_loss, train_kd_loss = train_epoch(student_model, teacher_model, train_loader, optimizer, device, scaler, tokenizer, eval_dir, epoch)
         val_loss = validate(student_model, val_loader, device)
         
         results['train_losses'].append(train_loss)
@@ -279,8 +289,6 @@ def main():
     results['test_loss'] = test_loss
     print(f"Test Loss: {test_loss:.4f}")
 
-    save_dir = "models/student"
-    os.makedirs(save_dir, exist_ok=True)
     student_model.save_pretrained(save_dir)
 
     with open(os.path.join(save_dir, 'training_results.json'), 'w') as f:
