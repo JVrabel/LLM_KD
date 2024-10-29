@@ -1,5 +1,5 @@
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split, Subset
+from torch.utils.data import Dataset, DataLoader, random_split
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig, BitsAndBytesConfig, LlamaConfig, LlamaForCausalLM, get_linear_schedule_with_warmup
 import json
 import os
@@ -11,7 +11,6 @@ from torch.nn.utils import clip_grad_norm_
 import torch.nn.functional as F
 import time
 from functools import partial
-import glob
 
 class SlidingWindowDataset(Dataset):
     def __init__(self, file_path, tokenizer, max_length, stride):
@@ -28,7 +27,6 @@ class SlidingWindowDataset(Dataset):
                 texts.append(data['text'])
 
         examples = []
-        total_tokens = 0
         for text in texts:
             tokenized = self.tokenizer(text, return_overflowing_tokens=True, 
                                        max_length=self.max_length, stride=self.stride,
@@ -38,11 +36,9 @@ class SlidingWindowDataset(Dataset):
                     'input_ids': tokenized['input_ids'][i],
                     'attention_mask': tokenized['attention_mask'][i]
                 })
-            total_tokens += sum(len(ids) for ids in tokenized['input_ids'])
         
         print(f"Created {len(examples)} examples with sliding window.")
-        print(f"Total tokens: {total_tokens}")
-        return examples, total_tokens
+        return examples
 
     def __len__(self):
         return len(self.examples)
@@ -132,8 +128,8 @@ class KDRecipeSingleDevice:
     def _setup_student_model(self):
         config = LlamaConfig.from_pretrained(self.cfg['model_name'])
         config.num_hidden_layers = config.num_hidden_layers // 2
-        config.num_attention_heads = config.num_attention_heads // 2
-        config.hidden_size = config.hidden_size // 2
+        config.num_attention_heads = config.num_attention_heads // 1
+        config.hidden_size = config.hidden_size // 1
         config.intermediate_size = config.intermediate_size // 2
         model = LlamaForCausalLM(config)
         return model.to(self.device)
@@ -155,39 +151,16 @@ class KDRecipeSingleDevice:
         return model
 
     def _setup_data(self):
-        # Load both datasets to compare sizes
-        dataset1 = SlidingWindowDataset(self.cfg['data_path'], self.tokenizer, self.cfg['max_length'], self.cfg['stride'])
-        dataset2 = SlidingWindowDataset(self.cfg['data_path_second'], self.tokenizer, self.cfg['max_length'], self.cfg['stride'])
-
-        total_tokens1 = dataset1.examples[1]
-        total_tokens2 = dataset2.examples[1]
-
-        print(f"First dataset (already trained) has {total_tokens1} tokens.")
-        print(f"Second dataset (to be trained) has {total_tokens2} tokens.")
-
-        if total_tokens2 > total_tokens1:
-            print(f"Second dataset has {total_tokens2 - total_tokens1} more tokens than the first dataset.")
-            print("Capping it to match the first dataset.")
-            ratio = total_tokens1 / total_tokens2
-            num_examples = int(len(dataset2.examples[0]) * ratio)
-            dataset2.examples = (dataset2.examples[0][:num_examples], total_tokens1)
-            print(f"Adjusted second dataset to {num_examples} examples.")
-        elif total_tokens2 < total_tokens1:
-            print(f"Second dataset has {total_tokens1 - total_tokens2} fewer tokens than the first dataset.")
-        else:
-            print("Both datasets have the same number of tokens.")
-
-        # Only use the second dataset for training
-        train_size = int(0.7 * len(dataset2.examples[0]))
-        val_size = int(0.1 * len(dataset2.examples[0]))
-        test_size = len(dataset2.examples[0]) - train_size - val_size
-
-        train_dataset, val_dataset, test_dataset = random_split(dataset2.examples[0], [train_size, val_size, test_size])
-
+        dataset = SlidingWindowDataset(self.cfg['data_path'], self.tokenizer, self.cfg['max_length'], self.cfg['stride'])
+        train_size = int(0.7 * len(dataset))
+        val_size = int(0.1 * len(dataset))
+        test_size = len(dataset) - train_size - val_size
+        train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
+        
         train_loader = DataLoader(train_dataset, batch_size=self.cfg['batch_size'], shuffle=True, collate_fn=collate_fn)
         val_loader = DataLoader(val_dataset, batch_size=self.cfg['batch_size'], shuffle=False, collate_fn=collate_fn)
         test_loader = DataLoader(test_dataset, batch_size=self.cfg['batch_size'], shuffle=False, collate_fn=collate_fn)
-
+        
         return train_loader, val_loader, test_loader
 
     def _setup_lr_scheduler(self):
@@ -300,18 +273,12 @@ class KDRecipeSingleDevice:
         return results
 
     def train(self):
-        print("Training on the second dataset")
-        print(f"Total examples: {len(self.train_loader.dataset)}")
-        print(f"Batch size: {self.cfg['batch_size']}")
-        print(f"Gradient accumulation steps: {self.gradient_accumulation_steps}")
-        print(f"Steps per epoch: {self.steps_per_epoch}")
-        print(f"Max steps per epoch: {self.max_steps_per_epoch}")
-
-        self.student_model.train()
         for epoch in range(self.epochs_run, self.total_epochs):
+            self.student_model.train()
             total_loss = 0
             total_ntp_loss = 0
             total_kd_loss = 0
+            logged_steps = 0  # Add this line
             
             pbar = tqdm(total=self.steps_per_epoch, desc=f"Epoch {epoch+1}/{self.total_epochs}")
             
@@ -338,6 +305,7 @@ class KDRecipeSingleDevice:
                     total_loss += loss.item() * self.gradient_accumulation_steps
                     total_ntp_loss += ntp_loss.item()
                     total_kd_loss += kd_loss.item()
+                    logged_steps += 1  # Add this line
 
                     pbar.update(1)
                     pbar.set_postfix({'loss': loss.item() * self.gradient_accumulation_steps})
@@ -348,23 +316,27 @@ class KDRecipeSingleDevice:
                                           kd_loss.item(), 
                                           self.optimizer.param_groups[0]['lr'])
 
-                    self.global_step += 1
-
-                    # Evaluation step
                     if self.global_step % self.eval_every == 0:
                         eval_loss, eval_ppl = self.evaluate(self.val_loader, steps=self.eval_steps)
-                        self.eval_losses.append(eval_loss)
-                        self.eval_ppls.append(eval_ppl)
-                        print(f"Step {self.global_step}: Eval Loss: {eval_loss:.4f}, Eval PPL: {eval_ppl:.4f}")
+                        train_loss = total_loss / logged_steps  # Update this line
+                        train_ppl = torch.exp(torch.tensor(train_loss)).item()
                         
-                        # Generate and save samples
+                        self.train_losses.append(train_loss)
+                        self.eval_losses.append(eval_loss)
+                        self.train_ppls.append(train_ppl)
+                        self.eval_ppls.append(eval_ppl)
+                        self.eval_steps_done += 1  # Add this line
+                        
+                        print(f"Step {self.global_step}: Train Loss: {train_loss:.4f}, Train PPL: {train_ppl:.4f}, "
+                              f"Eval Loss: {eval_loss:.4f}, Eval PPL: {eval_ppl:.4f}")
+                        
+                        self.plot_metrics()
+
+                        # Generate and save sample predictions
                         samples = self.generate_samples(batch)
                         self.save_samples(samples, epoch, self.global_step)
 
-                        # Plot metrics
-                        self.plot_metrics()
-
-                        self.student_model.train()  # Set model back to training mode
+                    self.global_step += 1
 
             pbar.close()
             
@@ -375,7 +347,18 @@ class KDRecipeSingleDevice:
             print(f"Epoch {epoch+1} - Avg Loss: {avg_loss:.4f}, Avg NTP Loss: {avg_ntp_loss:.4f}, Avg KD Loss: {avg_kd_loss:.4f}")
             
             self.epochs_run += 1
-            self.save_checkpoint(epoch)
+
+            # Evaluate on validation set
+            val_loss, val_ppl = self.evaluate(self.val_loader)
+            print(f"Validation Loss: {val_loss:.4f}, Validation PPL: {val_ppl:.4f}")
+
+            # Save checkpoint if it's time or if it's the best model
+            if (epoch + 1) % self.save_checkpoint_every == 0 or val_loss < self.best_val_loss:
+                self.save_checkpoint(epoch, avg_loss, val_loss)
+
+            if val_loss < self.best_val_loss:
+                self.best_val_loss = val_loss
+                self.save_checkpoint(epoch, avg_loss, val_loss, is_best=True)
 
     def _log_metrics(self, loss, ntp_loss, kd_loss, lr):
         print(f"Step {self.global_step}: Loss: {loss:.4f}, NTP Loss: {ntp_loss:.4f}, KD Loss: {kd_loss:.4f}, LR: {lr:.6f}")
@@ -385,14 +368,15 @@ class KDRecipeSingleDevice:
     def plot_metrics(self):
         plt.figure(figsize=(12, 8))
         plt.subplot(2, 1, 1)
-        plt.plot(self.train_losses, label='Train Loss')
-        plt.plot(self.eval_losses, label='Eval Loss')
+        x = range(1, self.eval_steps_done + 1)
+        plt.plot(x, self.train_losses, label='Train Loss')
+        plt.plot(x, self.eval_losses, label='Eval Loss')
         plt.legend()
         plt.title('Loss')
         
         plt.subplot(2, 1, 2)
-        plt.plot(self.train_ppls, label='Train PPL')
-        plt.plot(self.eval_ppls, label='Eval PPL')
+        plt.plot(x, self.train_ppls, label='Train PPL')
+        plt.plot(x, self.eval_ppls, label='Eval PPL')
         plt.legend()
         plt.title('Perplexity')
         
@@ -405,22 +389,33 @@ class KDRecipeSingleDevice:
         with open(samples_file, 'w') as f:
             json.dump(samples, f, indent=2)
 
-    def save_checkpoint(self, epoch):
+    def save_checkpoint(self, epoch, train_loss, val_loss, is_best=False):
         checkpoint = {
             'epoch': epoch,
             'student_model_state_dict': self.student_model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'lr_scheduler_state_dict': self.lr_scheduler.state_dict(),
-            'global_step': self.global_step,
+            'train_loss': train_loss,
+            'val_loss': val_loss,
+            'train_losses': self.train_losses,
+            'eval_losses': self.eval_losses,
+            'train_ppls': self.train_ppls,
+            'eval_ppls': self.eval_ppls,
         }
-        checkpoint_path = os.path.join(self.checkpoint_dir, f"checkpoint_second_dataset_epoch_{epoch}.pt")
+        
+        if is_best:
+            checkpoint_path = os.path.join(self.checkpoint_dir, "best_model.pt")
+        else:
+            checkpoint_path = os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pt")
+        
         torch.save(checkpoint, checkpoint_path)
-        print(f"Checkpoint saved to {checkpoint_path}")
+        print(f"Saved checkpoint to {checkpoint_path}")
 
-        # Keep only the N most recent checkpoints
-        checkpoints = sorted(glob.glob(os.path.join(self.checkpoint_dir, "checkpoint_second_dataset_epoch_*.pt")))
-        for checkpoint in checkpoints[:-self.keep_n_checkpoints]:
-            os.remove(checkpoint)
+        if not is_best:
+            # Keep only the N most recent checkpoints
+            checkpoints = sorted([f for f in os.listdir(self.checkpoint_dir) if f.startswith("checkpoint")])
+            for old_checkpoint in checkpoints[:-self.keep_n_checkpoints]:
+                os.remove(os.path.join(self.checkpoint_dir, old_checkpoint))
 
     def load_checkpoint(self, checkpoint_path):
         if not os.path.exists(checkpoint_path):
@@ -444,10 +439,10 @@ def main():
     cfg = {
         'model_name': "meta-llama/Llama-3.2-1B",
         'data_path': "data/test/output_phil/pretraining.jsonl",
-        'data_path_second': "data/test/output/pretraining.jsonl",
+        # 'data_path': "data/test/output/pretraining.jsonl",
         'output_dir': "runs/kd_experiment",
         'max_length': 512,
-        'stride': 32,
+        'stride': 420,
         'batch_size': 4,
         'learning_rate': 1e-4,
         'epochs': 100,
@@ -458,16 +453,22 @@ def main():
         'seed': 42,
         'log_every_n_steps': 100,
         'resume_from_checkpoint': False,
+        'eval_every': 200,
+        'eval_steps': 200,
+        'save_checkpoint_every': 5,  # Save checkpoint every 5 epochs
+        'keep_n_checkpoints': 3,  # Keep the 3 most recent checkpoints
     }
 
     recipe = KDRecipeSingleDevice(cfg)
     recipe.setup()
 
     if cfg['resume_from_checkpoint']:
-        recipe.load_checkpoint("path/to/your/checkpoint.pt")
+        checkpoint_path = os.path.join(recipe.checkpoint_dir, "best_model.pt")
+        if not os.path.exists(checkpoint_path):
+            checkpoint_path = os.path.join(recipe.checkpoint_dir, "checkpoint_epoch_latest.pt")
+        recipe.load_checkpoint(checkpoint_path)
 
     recipe.train()
 
 if __name__ == "__main__":
     main()
-

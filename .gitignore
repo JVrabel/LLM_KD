@@ -6,3 +6,15 @@ src/__pycache__/
 __pycache__/
 data/
 evaluations/
+kd_llm_venv/
+input/
+results/
+runs/
+figshare.py 
+kd_torchtune.py
+model_expl.py
+model_performance.png
+modularize copy.py
+modularize_slow.py
+plots.py
+run.py
