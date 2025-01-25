@@ -5,11 +5,15 @@ dist/
 src/__pycache__/
 __pycache__/
 data/
+cache/
 evaluations/
 kd_llm_venv/
 input/
 results/
 runs/
+new_venv/
+plots/
+dev/
 figshare.py 
 kd_torchtune.py
 model_expl.py
@@ -18,3 +22,6 @@ modularize copy.py
 modularize_slow.py
 plots.py
 run.py
+scraping.log
+models/
+gitignore.txt
