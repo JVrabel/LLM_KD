@@ -110,12 +110,21 @@ class KDRecipeSingleDevice:
         self.cfg = cfg
         self.logger = logger or logging.getLogger(__name__)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
+        
+        # Change dtype to float16 for AMP or disable AMP for bfloat16
+        if torch.cuda.is_bf16_supported():
+            self.dtype = torch.bfloat16
+            self.use_amp = False  # Disable AMP when using bfloat16
+        else:
+            self.dtype = torch.float16
+            self.use_amp = True   # Use AMP with float16
+        
+        self.logger.info(f"Using dtype: {self.dtype}, AMP enabled: {self.use_amp}")
         
         # Use provided run_dir or create new one
         if run_dir is None:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            run_dir = os.path.join(cfg['output_dir'], f"run_{timestamp}")
+            run_dir = os.path.join(cfg['output']['dir'], f"run_{timestamp}")
         self.run_dir = run_dir
         
         # Create necessary directories
@@ -128,19 +137,19 @@ class KDRecipeSingleDevice:
 
         self.logger.info(f"Initialized training in directory: {self.run_dir}")
         
-        self.log_every_n_steps = cfg.get("log_every_n_steps", 1)
-        self.log_peak_memory_stats = cfg.get("log_peak_memory_stats", False)
+        self.log_every_n_steps = cfg['training'].get('log_every_n_steps', 100)
+        self.log_peak_memory_stats = cfg.get('log_peak_memory_stats', False)
         
-        self.seed = self._set_seed(cfg['seed'])
+        self.seed = self._set_seed(cfg['training']['seed'])
         self.epochs_run = 0
-        self.total_epochs = cfg['epochs']
-        self.max_steps_per_epoch = cfg['max_steps_per_epoch']
+        self.total_epochs = cfg['training']['epochs']
+        self.max_steps_per_epoch = cfg['training']['max_steps_per_epoch']
         self.global_step = 0
-        self.resume_from_checkpoint = cfg['resume_from_checkpoint']
-        self.save_adapter_weights_only = cfg.get("save_adapter_weights_only", False)
-        self.gradient_accumulation_steps = cfg['gradient_accumulation_steps']
-        self.clip_grad_norm = cfg.get("clip_grad_norm", None)
-        self.kd_ratio = cfg.get("kd_ratio", 0.5)
+        self.resume_from_checkpoint = cfg['checkpointing']['resume']
+        self.save_adapter_weights_only = cfg.get('save_adapter_weights_only', False)
+        self.gradient_accumulation_steps = cfg['training']['gradient_accumulation_steps']
+        self.clip_grad_norm = cfg['training'].get('clip_grad_norm', None)
+        self.kd_ratio = cfg['training'].get('kd_ratio', 1.0)
 
         self.eval_every = cfg.get('eval_every', 100)
         self.eval_steps = cfg.get('eval_steps', 100)
@@ -160,13 +169,16 @@ class KDRecipeSingleDevice:
         return seed
 
     def setup(self):
-        self.tokenizer = AutoTokenizer.from_pretrained(self.cfg['model_name'])
+        self.tokenizer = AutoTokenizer.from_pretrained(self.cfg['model']['name'])
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
         self.student_model = self._setup_student_model()
         self.teacher_model = self._setup_teacher_model()
 
-        self.optimizer = torch.optim.AdamW(self.student_model.parameters(), lr=self.cfg['learning_rate'])
+        self.optimizer = torch.optim.AdamW(
+            self.student_model.parameters(), 
+            lr=self.cfg['training']['learning_rate']
+        )
         self.train_loader, self.val_loader, self.test_loader = self._setup_data()
 
         self.steps_per_epoch = len(self.train_loader) // self.gradient_accumulation_steps
@@ -175,17 +187,15 @@ class KDRecipeSingleDevice:
 
         self.lr_scheduler = self._setup_lr_scheduler()
 
-        self.scaler = torch.cuda.amp.GradScaler()
-
         self.ntp_loss_fn = torch.nn.CrossEntropyLoss(ignore_index=self.tokenizer.pad_token_id)
         self.kd_loss_fn = self.kl_div_loss
 
     def _setup_student_model(self):
         model = AutoModelForCausalLM.from_pretrained(
-            self.cfg['model_name'],
+            self.cfg['model']['name'],
             torch_dtype=self.dtype,
         )
-        if self.cfg.get('use_gradient_checkpointing', False):
+        if self.cfg['model'].get('use_gradient_checkpointing', False):
             model.gradient_checkpointing_enable()
         return model.to(self.device)
 
@@ -197,7 +207,7 @@ class KDRecipeSingleDevice:
             bnb_4bit_quant_type="nf4"
         )
         model = AutoModelForCausalLM.from_pretrained(
-            self.cfg['model_name'],
+            self.cfg['model']['name'],
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
             device_map="auto"
@@ -220,38 +230,52 @@ class KDRecipeSingleDevice:
                 tokenizer=self.tokenizer,
                 seq_length=self.cfg['data']['max_length'],
                 stride=self.cfg['data']['stride'],
-                max_tokens=source['max_tokens'],
+                max_tokens=source.get('max_tokens', None),
                 logger=self.logger
             )
             datasets.append(dataset)
-            total_tokens_requested += source['max_tokens'] if source['max_tokens'] else dataset.total_available_tokens
+            total_tokens_requested += source.get('max_tokens', dataset.total_available_tokens)
             total_tokens_available += dataset.total_available_tokens
-            
-        # Log total token statistics
-        self.logger.info(f"Total tokens requested across all sources: {total_tokens_requested:,}")
-        self.logger.info(f"Total tokens available across all sources: {total_tokens_available:,}")
-
-        # Combine datasets
-        combined_dataset = ConcatDataset(datasets)
-        self.logger.info(f"Combined dataset size: {len(combined_dataset)} sequences")
-
-        # Calculate splits
-        total_sequences = len(combined_dataset)
-        train_size = int(0.8 * total_sequences)
-        val_size = int(0.1 * total_sequences)
-        test_size = total_sequences - train_size - val_size
-
-        # Split dataset
-        train_dataset, val_dataset, test_dataset = random_split(
-            combined_dataset, 
-            [train_size, val_size, test_size],
+        
+        # Combine datasets if multiple
+        if len(datasets) > 1:
+            train_dataset = ConcatDataset(datasets)
+            self.logger.info(f"Combined {len(datasets)} datasets:")
+            self.logger.info(f"Total tokens requested: {total_tokens_requested:,}")
+            self.logger.info(f"Total tokens available: {total_tokens_available:,}")
+        else:
+            train_dataset = datasets[0]
+        
+        # Create test dataset
+        test_dataset = SlidingWindowDataset(
+            file_path=self.cfg['data']['test_path'],
+            tokenizer=self.tokenizer,
+            seq_length=self.cfg['data']['max_length'],
+            stride=self.cfg['data']['stride'],
+            max_tokens=None,  # No token limit for test set
+            logger=self.logger
+        )
+        
+        # Log dataset sizes
+        self.logger.info(f"Train dataset size: {len(train_dataset):,} sequences")
+        self.logger.info(f"Test dataset size: {len(test_dataset):,} sequences")
+        
+        # Split train into train and validation
+        total_train = len(train_dataset)
+        train_size = int(0.9 * total_train)  # 90% for training
+        val_size = total_train - train_size   # 10% for validation
+        
+        train_dataset, val_dataset = random_split(
+            train_dataset, 
+            [train_size, val_size],
             generator=torch.Generator().manual_seed(42)
         )
-
+        
+        self.logger.info(f"Final split sizes:")
         self.logger.info(f"Train size: {train_size:,} sequences")
         self.logger.info(f"Val size: {val_size:,} sequences")
-        self.logger.info(f"Test size: {test_size:,} sequences")
-
+        self.logger.info(f"Test size: {len(test_dataset):,} sequences")
+        
         # Create data loaders
         train_loader = DataLoader(
             train_dataset,
@@ -261,6 +285,7 @@ class KDRecipeSingleDevice:
             pin_memory=True,
             collate_fn=collate_fn
         )
+        
         val_loader = DataLoader(
             val_dataset,
             batch_size=self.cfg['data']['batch_size'],
@@ -269,6 +294,7 @@ class KDRecipeSingleDevice:
             pin_memory=True,
             collate_fn=collate_fn
         )
+        
         test_loader = DataLoader(
             test_dataset,
             batch_size=self.cfg['data']['batch_size'],
@@ -277,7 +303,7 @@ class KDRecipeSingleDevice:
             pin_memory=True,
             collate_fn=collate_fn
         )
-
+        
         return train_loader, val_loader, test_loader
 
     def _setup_lr_scheduler(self):
@@ -315,8 +341,7 @@ class KDRecipeSingleDevice:
                                   teacher_logits[..., :-1, :].contiguous().view(-1, teacher_logits.size(-1)), 
                                   shifted_labels.view(-1))
 
-        # loss = (1 - self.kd_ratio) * ntp_loss + self.kd_ratio * kd_loss
-        loss = kd_loss 
+        loss = (1 - self.kd_ratio) * ntp_loss + self.kd_ratio * kd_loss
 
         return loss, ntp_loss, kd_loss
 
@@ -424,93 +449,88 @@ class KDRecipeSingleDevice:
         self.logger.info(f"Training on device: {self.device}")
         self.logger.info(f"Model dtype: {self.dtype}")
         
+        # Only create scaler if using AMP
+        if self.use_amp:
+            self.scaler = torch.cuda.amp.GradScaler()
+        
         for epoch in range(self.epochs_run, self.total_epochs):
             self.logger.info(f"Starting epoch {epoch+1}/{self.total_epochs}")
-            
             self.student_model.train()
-            total_loss = 0
-            total_kd_loss = 0
-            total_ntp_loss = 0
-            logged_steps = 0
             
-            pbar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}")
-            for step, batch in enumerate(pbar):
-                if step // self.gradient_accumulation_steps == self.max_steps_per_epoch:
-                    break
-
-                with torch.cuda.amp.autocast():
-                    loss, ntp_loss, kd_loss = self._loss_step(batch)
-                    loss = loss / self.gradient_accumulation_steps
-
-                self.scaler.scale(loss).backward()
-
-                if (step + 1) % self.gradient_accumulation_steps == 0:
+            progress_bar = tqdm(total=len(self.train_loader), desc=f"Epoch {epoch+1}")
+            epoch_loss = 0
+            
+            for batch_idx, batch in enumerate(self.train_loader):
+                batch = {k: v.to(self.device) for k, v in batch.items()}
+                
+                # Modify the training step based on AMP usage
+                if self.use_amp:
+                    with torch.cuda.amp.autocast():
+                        loss, ntp_loss, kd_loss = self._loss_step(batch)
+                    self.scaler.scale(loss).backward()
                     if self.clip_grad_norm is not None:
                         self.scaler.unscale_(self.optimizer)
                         clip_grad_norm_(self.student_model.parameters(), self.clip_grad_norm)
-                    
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
-                    self.optimizer.zero_grad(set_to_none=True)
-                    self.lr_scheduler.step()
+                else:
+                    # Direct bfloat16 training without AMP
+                    loss, ntp_loss, kd_loss = self._loss_step(batch)
+                    loss.backward()
+                    if self.clip_grad_norm is not None:
+                        clip_grad_norm_(self.student_model.parameters(), self.clip_grad_norm)
+                    self.optimizer.step()
+                
+                self.optimizer.zero_grad()
+                self.lr_scheduler.step()
+                
+                epoch_loss += loss.item()
+                progress_bar.update(1)
+                progress_bar.set_postfix({'loss': loss.item()})
 
-                    total_loss += loss.item() * self.gradient_accumulation_steps
-                    total_ntp_loss += ntp_loss.item()
-                    total_kd_loss += kd_loss.item()
-                    logged_steps += 1
+                if self.global_step % self.log_every_n_steps == 0:
+                    self._log_metrics(loss.item(), ntp_loss.item(), kd_loss.item(), self.optimizer.param_groups[0]['lr'])
 
-                    pbar.update(1)
-                    pbar.set_postfix({'loss': loss.item() * self.gradient_accumulation_steps})
+                if self.global_step % self.eval_every == 0:
+                    eval_loss, eval_ppl = self.evaluate(self.val_loader, steps=self.eval_steps)
+                    train_loss = epoch_loss / (batch_idx + 1)
+                    train_ppl = torch.exp(torch.tensor(train_loss)).item()
+                    
+                    self.train_losses.append(train_loss)
+                    self.eval_losses.append(eval_loss)
+                    self.train_ppls.append(train_ppl)
+                    self.eval_ppls.append(eval_ppl)
+                    self.eval_steps_done += 1
+                    
+                    print(f"Step {self.global_step}: Train Loss: {train_loss:.4f}, Train PPL: {train_ppl:.4f}, "
+                          f"Eval Loss: {eval_loss:.4f}, Eval PPL: {eval_ppl:.4f}")
+                    
+                    self.plot_metrics()
 
-                    if self.global_step % self.log_every_n_steps == 0:
-                        self._log_metrics(loss.item() * self.gradient_accumulation_steps, 
-                                          ntp_loss.item(), 
-                                          kd_loss.item(), 
-                                          self.optimizer.param_groups[0]['lr'])
+                    # Generate and save sample predictions
+                    samples = self.generate_samples(batch)
+                    self.save_samples(samples, epoch, self.global_step)
 
-                    if self.global_step % self.eval_every == 0:
-                        eval_loss, eval_ppl = self.evaluate(self.val_loader, steps=self.eval_steps)
-                        train_loss = total_loss / logged_steps
-                        train_ppl = torch.exp(torch.tensor(train_loss)).item()
-                        
-                        self.train_losses.append(train_loss)
-                        self.eval_losses.append(eval_loss)
-                        self.train_ppls.append(train_ppl)
-                        self.eval_ppls.append(eval_ppl)
-                        self.eval_steps_done += 1
-                        
-                        print(f"Step {self.global_step}: Train Loss: {train_loss:.4f}, Train PPL: {train_ppl:.4f}, "
-                              f"Eval Loss: {eval_loss:.4f}, Eval PPL: {eval_ppl:.4f}")
-                        
-                        self.plot_metrics()
+                    # Log metrics
+                    metrics = {
+                        "train/loss": train_loss,
+                        "train/ppl": train_ppl,
+                        "train/kd_loss": kd_loss.item(),
+                        "train/ntp_loss": ntp_loss.item(),
+                        "train/learning_rate": self.optimizer.param_groups[0]['lr'],
+                        "epoch": epoch + batch_idx / len(self.train_loader),
+                    }
+                    
+                    if self.use_wandb:
+                        import wandb
+                        wandb.log(metrics, step=self.global_step)
 
-                        # Generate and save sample predictions
-                        samples = self.generate_samples(batch)
-                        self.save_samples(samples, epoch, self.global_step)
+                self.global_step += 1
 
-                        # Log metrics
-                        metrics = {
-                            "train/loss": train_loss,
-                            "train/ppl": train_ppl,
-                            "train/kd_loss": total_kd_loss / logged_steps,
-                            "train/ntp_loss": total_ntp_loss / logged_steps,
-                            "train/learning_rate": self.optimizer.param_groups[0]['lr'],
-                            "epoch": epoch + step / len(self.train_loader),
-                        }
-                        
-                        if self.use_wandb:
-                            import wandb
-                            wandb.log(metrics, step=self.global_step)
-
-                    self.global_step += 1
-
-            pbar.close()
+            progress_bar.close()
             
-            avg_loss = total_loss / self.steps_per_epoch
-            avg_ntp_loss = total_ntp_loss / self.steps_per_epoch
-            avg_kd_loss = total_kd_loss / self.steps_per_epoch
-            
-            print(f"Epoch {epoch+1} - Avg Loss: {avg_loss:.4f}, Avg NTP Loss: {avg_ntp_loss:.4f}, Avg KD Loss: {avg_kd_loss:.4f}")
+            avg_loss = epoch_loss / self.steps_per_epoch
+            print(f"Epoch {epoch+1} - Avg Loss: {avg_loss:.4f}")
             
             self.epochs_run += 1
 
@@ -605,15 +625,6 @@ class KDRecipeSingleDevice:
                     old_ckpt_path = os.path.join(self.checkpoint_dir, old_ckpt)
                     os.remove(old_ckpt_path)
                     self.logger.info(f"Removed old checkpoint: {old_ckpt}")
-
-        if self.use_wandb:
-            import wandb
-            # Log best model to wandb
-            if is_best:
-                wandb.save(os.path.join(self.checkpoint_dir, "best_model.pt"))
-            # Log final model to wandb
-            if is_final:
-                wandb.save(os.path.join(self.checkpoint_dir, "final_model.pt"))
 
     def load_checkpoint(self, checkpoint_path):
         if not os.path.exists(checkpoint_path):

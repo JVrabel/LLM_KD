@@ -25,3 +25,4 @@ run.py
 scraping.log
 models/
 gitignore.txt
+wandb/

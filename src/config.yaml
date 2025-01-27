@@ -1,21 +1,20 @@
 model:
-  name: "meta-llama/Llama-3.2-3B"
+  name: "reciprocate/tiny-llama"
   use_gradient_checkpointing: true
+  mixed_precision: "bf16"  # or "fp16" if you want to use AMP
 
 data:
   sources:
-    - path: "data/test/output_phil/pretraining.jsonl"
-      max_tokens: 1000000  # 1M tokens
-    - path: "data/test/output/pretraining.jsonl"
-      max_tokens: 500000   # 500K tokens
-    # Can add more sources with their token limits
+    - path: "data/gutenberg/train/bookshelf_57_train.jsonl"
+      max_tokens: 20000000  # Adjust based on your needs
   max_length: 512
   stride: 380
   batch_size: 32
   num_workers: 6
+  test_path: "data/gutenberg/test/bookshelf_57_test.jsonl"
 
 training:
-  learning_rate: 1e-4
+  learning_rate: 1.0e-4
   epochs: 100
   max_steps_per_epoch: null
   gradient_accumulation_steps: 1
@@ -29,16 +28,19 @@ training:
 checkpointing:
   save_best: true
   save_last: true
-  save_every_n_epochs: 5  # Save every 5 epochs
-  keep_n_checkpoints: 2
-  resume: null  # Path to checkpoint to resume from, null if starting fresh
+  save_every_n_epochs: 5
+  keep_n_checkpoints: 1
+  resume: null
 
 output:
   dir: "runs/kd_experiment_3b"
 
-  wandb:
+wandb:
   enabled: true
   project: "llm-kd"
-  name: null  # Will be auto-generated if null
+  name: null
   tags: ["3B", "knowledge-distillation"]
   notes: "Training 3B student with KD"
+
+
+  #python src/modularize_phil_both_datasets.py --config config.yaml --resume runs/kd_experiment_3b/run_20240101_123456/checkpoints/best_model.pt
