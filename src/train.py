@@ -29,6 +29,9 @@ class SlidingWindowDataset(Dataset):
         with open(file_path, 'r', encoding='utf-8') as f:
             text = f.read()
         
+        # Clean text before tokenization
+        text = self._clean_text(text)
+        
         # Tokenize text
         self.logger.info("Tokenizing text...")
         self.all_tokens = self.tokenizer.encode(text)
@@ -97,6 +100,21 @@ class SlidingWindowDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.examples[idx]
+
+    def _clean_text(self, text):
+        """Clean text before tokenization."""
+        # Replace multiple newlines with single newline
+        text = '\n'.join(line for line in text.split('\n') if line.strip())
+        
+        # Replace multiple spaces with single space
+        text = ' '.join(text.split())
+        
+        # Add space after punctuation if missing
+        for punct in '.!?,;:':
+            text = text.replace(punct + ' ', punct + ' ')
+            text = text.replace(punct, punct + ' ')
+        
+        return text
 
 def collate_fn(batch):
     input_ids = torch.stack([item['input_ids'] for item in batch])
@@ -409,12 +427,27 @@ class KDRecipeSingleDevice:
         
         def clean_text(text):
             """Clean up text by removing special tokens and formatting."""
-            # Remove special tokens and normalize whitespace
+            # Remove special tokens
             text = text.replace(self.tokenizer.pad_token, "")
             text = text.replace(self.tokenizer.eos_token, "")
-            text = text.replace("\n", " ")
-            text = " ".join(text.split())  # Normalize whitespace
-            return text
+            
+            # Replace multiple newlines with single space
+            text = ' '.join(line for line in text.split('\n') if line.strip())
+            
+            # Replace multiple spaces with single space
+            text = ' '.join(text.split())
+            
+            # Clean up common artifacts
+            text = text.replace('\\n', ' ')  # Remove literal \n
+            text = text.replace('\\t', ' ')  # Remove literal \t
+            text = text.replace('\\r', ' ')  # Remove literal \r
+            
+            # Remove multiple punctuation
+            for punct in '.!?,;:':
+                while punct + punct in text:
+                    text = text.replace(punct + punct, punct)
+            
+            return text.strip()
         
         # Decode and clean all tokens
         samples = []
