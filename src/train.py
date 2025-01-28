@@ -371,43 +371,112 @@ class KDRecipeSingleDevice:
         
         return avg_loss, ppl
 
-    def generate_samples(self, batch, num_samples=5):
-        """Generate and compare predictions from teacher and student."""
+    def generate_samples(self, batch, num_samples=5, generate_length=20):
+        """Generate and compare longer predictions from teacher and student."""
         self.student_model.eval()
         self.teacher_model.eval()
         
         # Select a subset of the batch for sampling
         input_ids = batch['input_ids'][:num_samples].to(self.device)
         
-        # Get the actual next tokens (targets)
-        actual_next = input_ids[:, -1].cpu()
-        context = input_ids[:, :-1]
+        # Get context (use most of the sequence as context)
+        context = input_ids[:, :-generate_length]  # Leave room for generation
+        actual_continuation = input_ids[:, -generate_length:]  # Actual next tokens
         
         # Generate from both models
         with torch.no_grad():
-            student_logits = self.student_model(context).logits[:, -1, :]
-            teacher_logits = self.teacher_model(context).logits[:, -1, :]
+            # Student generation
+            student_outputs = self.student_model.generate(
+                context,
+                max_new_tokens=generate_length,
+                num_beams=4,
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
+                do_sample=True,
+                temperature=0.7,
+            )
             
-            student_preds = torch.argmax(student_logits, dim=-1).cpu()
-            teacher_preds = torch.argmax(teacher_logits, dim=-1).cpu()
+            # Teacher generation
+            teacher_outputs = self.teacher_model.generate(
+                context,
+                max_new_tokens=generate_length,
+                num_beams=4,
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
+                do_sample=True,
+                temperature=0.7,
+            )
         
-        # Decode all tokens
+        def clean_text(text):
+            """Clean up text by removing special tokens and formatting."""
+            # Remove special tokens and normalize whitespace
+            text = text.replace(self.tokenizer.pad_token, "")
+            text = text.replace(self.tokenizer.eos_token, "")
+            text = text.replace("\n", " ")
+            text = " ".join(text.split())  # Normalize whitespace
+            return text
+        
+        # Decode and clean all tokens
         samples = []
         for i in range(num_samples):
-            context_text = self.tokenizer.decode(context[i])
-            actual_next_text = self.tokenizer.decode(actual_next[i])
-            student_pred_text = self.tokenizer.decode(student_preds[i])
-            teacher_pred_text = self.tokenizer.decode(teacher_preds[i])
+            # Get the context and actual continuation
+            context_text = clean_text(self.tokenizer.decode(context[i]))
+            actual_text = clean_text(self.tokenizer.decode(actual_continuation[i]))
+            
+            # Get model generations (excluding the context)
+            student_text = clean_text(self.tokenizer.decode(
+                student_outputs[i][len(context[i]):]))
+            teacher_text = clean_text(self.tokenizer.decode(
+                teacher_outputs[i][len(context[i]):]))
             
             sample = {
                 'context': context_text,
-                'actual_next': actual_next_text,
-                'student_prediction': student_pred_text,
-                'teacher_prediction': teacher_pred_text,
+                'actual_continuation': actual_text,
+                'student_generation': student_text,
+                'teacher_generation': teacher_text,
             }
             samples.append(sample)
+            
+            # Log detailed comparison
+            self.logger.info(f"\nSample {i+1}:")
+            self.logger.info(f"Context: {context_text}")
+            self.logger.info(f"Actual: {actual_text}")
+            self.logger.info(f"Student: {student_text}")
+            self.logger.info(f"Teacher: {teacher_text}")
+        
+        if self.use_wandb:
+            import wandb
+            # Create a wandb Table with formatted text
+            columns = ["Sample", "Context", "Actual", "Student", "Teacher"]
+            data = [
+                [i+1, 
+                 sample['context'], 
+                 sample['actual_continuation'],
+                 sample['student_generation'],
+                 sample['teacher_generation']]
+                for i, sample in enumerate(samples)
+            ]
+            
+            table = wandb.Table(columns=columns, data=data)
+            wandb.log({
+                "predictions/examples": table,
+                # Add metrics about generation quality
+                "predictions/student_teacher_similarity": wandb.Histogram(
+                    [self._compute_text_similarity(s['student_generation'], 
+                                                s['teacher_generation']) 
+                     for s in samples]
+                ),
+            }, step=self.global_step)
         
         return samples
+
+    def _compute_text_similarity(self, text1, text2):
+        """Compute simple token overlap similarity between two texts."""
+        tokens1 = set(text1.lower().split())
+        tokens2 = set(text2.lower().split())
+        intersection = tokens1.intersection(tokens2)
+        union = tokens1.union(tokens2)
+        return len(intersection) / len(union) if union else 0.0
 
     def save_samples(self, samples, epoch, step):
         """Save generated samples and log to wandb if enabled."""
@@ -419,9 +488,9 @@ class KDRecipeSingleDevice:
             for i, sample in enumerate(samples, 1):
                 f.write(f"Sample {i}:\n")
                 f.write(f"Context: {sample['context']}\n")
-                f.write(f"Actual next token: {sample['actual_next']}\n")
-                f.write(f"Student prediction: {sample['student_prediction']}\n")
-                f.write(f"Teacher prediction: {sample['teacher_prediction']}\n")
+                f.write(f"Actual next token: {sample['actual_continuation']}\n")
+                f.write(f"Student prediction: {sample['student_generation']}\n")
+                f.write(f"Teacher prediction: {sample['teacher_generation']}\n")
                 f.write("-" * 80 + "\n")
         
         if self.use_wandb:
@@ -431,9 +500,9 @@ class KDRecipeSingleDevice:
             data = [
                 [i+1, 
                  sample['context'], 
-                 sample['actual_next'],
-                 sample['student_prediction'],
-                 sample['teacher_prediction']]
+                 sample['actual_continuation'],
+                 sample['student_generation'],
+                 sample['teacher_generation']]
                 for i, sample in enumerate(samples)
             ]
             
