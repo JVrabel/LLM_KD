@@ -11,6 +11,7 @@ from torch.nn.utils import clip_grad_norm_
 import torch.nn.functional as F
 import time
 from functools import partial
+
 import logging
 import yaml
 import argparse
@@ -364,13 +365,18 @@ class KDRecipeSingleDevice:
         input_ids = batch['input_ids'].to(self.device)
         attention_mask = batch['attention_mask'].to(self.device)
 
+        # Teacher outputs might be accumulating in memory
         with torch.no_grad():
             teacher_outputs = self.teacher_model(input_ids=input_ids, attention_mask=attention_mask)
-            teacher_logits = teacher_outputs.logits
+            teacher_logits = teacher_outputs.logits.detach()  # Explicitly detach
+            del teacher_outputs  # Free memory
 
         student_outputs = self.student_model(input_ids=input_ids, attention_mask=attention_mask)
         student_logits = student_outputs.logits
-
+        
+        # Free memory
+        del student_outputs
+        
         shifted_logits = student_logits[..., :-1, :].contiguous()
         shifted_labels = input_ids[..., 1:].contiguous()
         
@@ -380,7 +386,10 @@ class KDRecipeSingleDevice:
                                   shifted_labels.view(-1))
 
         loss = (1 - self.kd_ratio) * ntp_loss + self.kd_ratio * kd_loss
-
+        
+        # Clean up
+        del teacher_logits, student_logits, shifted_logits, shifted_labels
+        
         return loss, ntp_loss, kd_loss
 
     def evaluate(self, eval_loader, steps=None):
@@ -526,9 +535,12 @@ class KDRecipeSingleDevice:
             progress_bar = tqdm(total=len(self.train_loader), desc=f"Epoch {epoch+1}")
             
             for batch_idx, batch in enumerate(self.train_loader):
+                # Clear cache periodically
+                if batch_idx % self.gradient_accumulation_steps == 0:
+                    torch.cuda.empty_cache()
+                    
                 batch = {k: v.to(self.device) for k, v in batch.items()}
                 
-                # Get losses first (for both AMP and non-AMP cases)
                 if self.use_amp:
                     with torch.cuda.amp.autocast():
                         loss, ntp_loss, kd_loss = self._loss_step(batch)
@@ -544,7 +556,8 @@ class KDRecipeSingleDevice:
                 else:
                     loss.backward()
                 
-                # Update weights if we've accumulated enough gradients
+                del loss  # Free memory after backward
+                
                 if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
                     if self.use_amp:
                         if self.clip_grad_norm is not None:
@@ -585,9 +598,10 @@ class KDRecipeSingleDevice:
                         train_loss = total_loss / logged_steps
                         train_ppl = torch.exp(torch.tensor(train_loss)).item()
                         
-                        # Generate samples for visual inspection
-                        samples = self.generate_samples(batch)
-                        self.save_samples(samples, epoch, self.global_step)
+                        # Only generate samples after some training
+                        if self.global_step > 1000:  # Or some other threshold
+                            samples = self.generate_samples(batch)
+                            self.save_samples(samples, epoch, self.global_step)
                         
                         # Log detailed metrics
                         metrics = {
