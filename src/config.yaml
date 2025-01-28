@@ -17,7 +17,7 @@ training:
   learning_rate: 1.0e-4
   epochs: 100
   max_steps_per_epoch: null
-  gradient_accumulation_steps: 1
+  gradient_accumulation_steps: 4
   clip_grad_norm: 1.0
   kd_ratio: 1.0
   seed: 42

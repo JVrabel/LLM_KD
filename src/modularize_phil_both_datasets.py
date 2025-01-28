@@ -446,90 +446,89 @@ class KDRecipeSingleDevice:
 
     def train(self):
         self.logger.info("Starting training")
-        self.logger.info(f"Training on device: {self.device}")
-        self.logger.info(f"Model dtype: {self.dtype}")
-        
-        # Only create scaler if using AMP
-        if self.use_amp:
-            self.scaler = torch.cuda.amp.GradScaler()
         
         for epoch in range(self.epochs_run, self.total_epochs):
-            self.logger.info(f"Starting epoch {epoch+1}/{self.total_epochs}")
             self.student_model.train()
+            total_loss = 0
+            total_ntp_loss = 0
+            total_kd_loss = 0
+            logged_steps = 0
             
             progress_bar = tqdm(total=len(self.train_loader), desc=f"Epoch {epoch+1}")
-            epoch_loss = 0
             
             for batch_idx, batch in enumerate(self.train_loader):
                 batch = {k: v.to(self.device) for k, v in batch.items()}
                 
-                # Modify the training step based on AMP usage
+                # Modify training step with gradient accumulation
                 if self.use_amp:
                     with torch.cuda.amp.autocast():
                         loss, ntp_loss, kd_loss = self._loss_step(batch)
+                        loss = loss / self.gradient_accumulation_steps
+                    
                     self.scaler.scale(loss).backward()
-                    if self.clip_grad_norm is not None:
-                        self.scaler.unscale_(self.optimizer)
-                        clip_grad_norm_(self.student_model.parameters(), self.clip_grad_norm)
-                    self.scaler.step(self.optimizer)
-                    self.scaler.update()
-                else:
-                    # Direct bfloat16 training without AMP
-                    loss, ntp_loss, kd_loss = self._loss_step(batch)
-                    loss.backward()
-                    if self.clip_grad_norm is not None:
-                        clip_grad_norm_(self.student_model.parameters(), self.clip_grad_norm)
-                    self.optimizer.step()
+                    
+                    if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
+                        if self.clip_grad_norm is not None:
+                            self.scaler.unscale_(self.optimizer)
+                            clip_grad_norm_(self.student_model.parameters(), self.clip_grad_norm)
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                        self.optimizer.zero_grad(set_to_none=True)
+                        self.lr_scheduler.step()
+                        
+                        # Track losses
+                        total_loss += loss.item() * self.gradient_accumulation_steps
+                        total_ntp_loss += ntp_loss.item()
+                        total_kd_loss += kd_loss.item()
+                        logged_steps += 1
+                        
+                        # Enhanced logging to wandb
+                        if self.use_wandb and self.global_step % self.log_every_n_steps == 0:
+                            import wandb
+                            wandb.log({
+                                "train/step_loss": loss.item() * self.gradient_accumulation_steps,
+                                "train/step_ntp_loss": ntp_loss.item(),
+                                "train/step_kd_loss": kd_loss.item(),
+                                "train/learning_rate": self.optimizer.param_groups[0]['lr'],
+                                "train/gpu_memory_gb": torch.cuda.max_memory_allocated() / 1e9,
+                                "train/step": self.global_step,
+                                "train/epoch": epoch + batch_idx / len(self.train_loader)
+                            }, step=self.global_step)
+                        
+                        # Evaluation
+                        if self.global_step % self.eval_every == 0:
+                            eval_loss, eval_ppl = self.evaluate(self.val_loader, steps=self.eval_steps)
+                            train_loss = total_loss / logged_steps
+                            train_ppl = torch.exp(torch.tensor(train_loss)).item()
+                            
+                            # Generate samples for visual inspection
+                            samples = self.generate_samples(batch)
+                            self.save_samples(samples, epoch, self.global_step)
+                            
+                            # Log detailed metrics
+                            metrics = {
+                                "eval/loss": eval_loss,
+                                "eval/ppl": eval_ppl,
+                                "train/avg_loss": train_loss,
+                                "train/ppl": train_ppl,
+                                "train/avg_ntp_loss": total_ntp_loss / logged_steps,
+                                "train/avg_kd_loss": total_kd_loss / logged_steps,
+                            }
+                            if self.use_wandb:
+                                wandb.log(metrics, step=self.global_step)
+                        
+                        self.global_step += 1
                 
-                self.optimizer.zero_grad()
-                self.lr_scheduler.step()
-                
-                epoch_loss += loss.item()
                 progress_bar.update(1)
-                progress_bar.set_postfix({'loss': loss.item()})
-
-                if self.global_step % self.log_every_n_steps == 0:
-                    self._log_metrics(loss.item(), ntp_loss.item(), kd_loss.item(), self.optimizer.param_groups[0]['lr'])
-
-                if self.global_step % self.eval_every == 0:
-                    eval_loss, eval_ppl = self.evaluate(self.val_loader, steps=self.eval_steps)
-                    train_loss = epoch_loss / (batch_idx + 1)
-                    train_ppl = torch.exp(torch.tensor(train_loss)).item()
-                    
-                    self.train_losses.append(train_loss)
-                    self.eval_losses.append(eval_loss)
-                    self.train_ppls.append(train_ppl)
-                    self.eval_ppls.append(eval_ppl)
-                    self.eval_steps_done += 1
-                    
-                    print(f"Step {self.global_step}: Train Loss: {train_loss:.4f}, Train PPL: {train_ppl:.4f}, "
-                          f"Eval Loss: {eval_loss:.4f}, Eval PPL: {eval_ppl:.4f}")
-                    
-                    self.plot_metrics()
-
-                    # Generate and save sample predictions
-                    samples = self.generate_samples(batch)
-                    self.save_samples(samples, epoch, self.global_step)
-
-                    # Log metrics
-                    metrics = {
-                        "train/loss": train_loss,
-                        "train/ppl": train_ppl,
-                        "train/kd_loss": kd_loss.item(),
-                        "train/ntp_loss": ntp_loss.item(),
-                        "train/learning_rate": self.optimizer.param_groups[0]['lr'],
-                        "epoch": epoch + batch_idx / len(self.train_loader),
-                    }
-                    
-                    if self.use_wandb:
-                        import wandb
-                        wandb.log(metrics, step=self.global_step)
-
-                self.global_step += 1
+                progress_bar.set_postfix({
+                    'loss': loss.item() * self.gradient_accumulation_steps,
+                    'ntp_loss': ntp_loss.item(),
+                    'kd_loss': kd_loss.item()
+                })
 
             progress_bar.close()
             
-            avg_loss = epoch_loss / self.steps_per_epoch
+            avg_loss = total_loss / logged_steps
             print(f"Epoch {epoch+1} - Avg Loss: {avg_loss:.4f}")
             
             self.epochs_run += 1
