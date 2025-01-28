@@ -210,27 +210,15 @@ class KDRecipeSingleDevice:
 
     def _setup_student_model(self):
         """Setup student model - same architecture as teacher but randomly initialized."""
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4"
-        )
-        
         config = LlamaConfig.from_pretrained(self.cfg['model']['name'])
         model = LlamaForCausalLM(config)  # Random initialization
         
-        # Convert to 4-bit
-        model = model.to(torch.bfloat16)  # First convert to bfloat16
-        model = model.quantize(quantization_config)  # Then quantize
-        
         if self.cfg['model'].get('use_gradient_checkpointing', False):
             model.gradient_checkpointing_enable()
-        
         return model.to(self.device)
 
     def _setup_teacher_model(self):
-        """Setup teacher model with pretrained weights."""
+        """Setup teacher model - same architecture but with pretrained weights."""
         quantization_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_compute_dtype=torch.bfloat16,
@@ -238,12 +226,26 @@ class KDRecipeSingleDevice:
             bnb_4bit_quant_type="nf4"
         )
         
+        # Load pretrained model with weights
         model = LlamaForCausalLM.from_pretrained(
-            self.cfg['model']['name'],
+            self.cfg['model']['name'],  # Same model name/architecture as student
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
             device_map="auto",
         )
+        
+        # Verify model is loaded with pretrained weights
+        self.logger.info("Verifying teacher model...")
+        test_input = self.tokenizer("Hello, how are", return_tensors="pt").to(self.device)
+        with torch.no_grad():
+            test_output = model.generate(
+                test_input.input_ids,
+                max_new_tokens=10,
+                num_beams=4,
+                temperature=0.7
+            )
+        test_output_text = self.tokenizer.decode(test_output[0], skip_special_tokens=True)
+        self.logger.info(f"Teacher test output: {test_output_text}")
         
         model.eval()
         for param in model.parameters():
