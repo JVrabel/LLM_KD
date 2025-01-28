@@ -414,111 +414,58 @@ class KDRecipeSingleDevice:
         self.student_model.eval()
         self.teacher_model.eval()
         
-        # Select a subset of the batch for sampling
+        # Take only a small subset of the batch
         input_ids = batch['input_ids'][:num_samples].to(self.device)
+        context = input_ids[:, :-generate_length]
+        actual_continuation = input_ids[:, -generate_length:]
         
-        # Get context (use most of the sequence as context)
-        context = input_ids[:, :-generate_length]  # Leave room for generation
-        actual_continuation = input_ids[:, -generate_length:]  # Actual next tokens
-        
-        # Generate from both models
-        with torch.no_grad():
-            # Student generation
-            student_outputs = self.student_model.generate(
-                context,
-                max_new_tokens=generate_length,
-                num_beams=4,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-                do_sample=True,
-                temperature=0.7,
-            )
-            
-            # Teacher generation
-            teacher_outputs = self.teacher_model.generate(
-                context,
-                max_new_tokens=generate_length,
-                num_beams=4,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-                do_sample=True,
-                temperature=0.7,
-            )
-        
-        def clean_text(text):
-            """Clean up text by removing special tokens and formatting."""
-            # Remove special tokens
-            text = text.replace(self.tokenizer.pad_token, "")
-            text = text.replace(self.tokenizer.eos_token, "")
-            
-            # Replace multiple newlines with single space
-            text = ' '.join(line for line in text.split('\n') if line.strip())
-            
-            # Replace multiple spaces with single space
-            text = ' '.join(text.split())
-            
-            # Clean up common artifacts
-            text = text.replace('\\n', ' ')  # Remove literal \n
-            text = text.replace('\\t', ' ')  # Remove literal \t
-            text = text.replace('\\r', ' ')  # Remove literal \r
-            
-            # Remove multiple punctuation
-            for punct in '.!?,;:':
-                while punct + punct in text:
-                    text = text.replace(punct + punct, punct)
-            
-            return text.strip()
-        
-        # Decode and clean all tokens
         samples = []
+        # Process one sample at a time to save memory
         for i in range(num_samples):
-            # Get the context and actual continuation
-            context_text = clean_text(self.tokenizer.decode(context[i]))
-            actual_text = clean_text(self.tokenizer.decode(actual_continuation[i]))
-            
-            # Get model generations (excluding the context)
-            student_text = clean_text(self.tokenizer.decode(
-                student_outputs[i][len(context[i]):]))
-            teacher_text = clean_text(self.tokenizer.decode(
-                teacher_outputs[i][len(context[i]):]))
-            
-            sample = {
-                'context': context_text,
-                'actual_continuation': actual_text,
-                'student_generation': student_text,
-                'teacher_generation': teacher_text,
-            }
-            samples.append(sample)
-            
-            # Log detailed comparison
-            self.logger.info(f"\nSample {i+1}:")
-            self.logger.info(f"Context: {context_text}")
-            self.logger.info(f"Actual: {actual_text}")
-            self.logger.info(f"Student: {student_text}")
-            self.logger.info(f"Teacher: {teacher_text}")
+            with torch.no_grad():
+                # Generate one at a time
+                student_output = self.student_model.generate(
+                    context[i:i+1],
+                    max_new_tokens=generate_length,
+                    num_beams=4,
+                    temperature=0.7,
+                )
+                
+                teacher_output = self.teacher_model.generate(
+                    context[i:i+1],
+                    max_new_tokens=generate_length,
+                    num_beams=4,
+                    temperature=0.7,
+                )
+                
+                # Immediately decode and clean to free up GPU memory
+                context_text = self.tokenizer.decode(context[i], skip_special_tokens=True)
+                actual_text = self.tokenizer.decode(actual_continuation[i], skip_special_tokens=True)
+                student_text = self.tokenizer.decode(student_output[0][len(context[i]):], skip_special_tokens=True)
+                teacher_text = self.tokenizer.decode(teacher_output[0][len(context[i]):], skip_special_tokens=True)
+                
+                # Clean texts
+                sample = {
+                    'context': context_text[-100:],  # Only keep last 100 chars of context
+                    'actual_continuation': actual_text[:100],  # Only keep first 100 chars
+                    'student_generation': student_text[:100],
+                    'teacher_generation': teacher_text[:100]
+                }
+                samples.append(sample)
+                
+                # Minimal logging
+                if i == 0:  # Only log first sample
+                    self.logger.info(f"\nSample generation - Teacher: {teacher_text[:50]}...")
+                    self.logger.info(f"Student: {student_text[:50]}...")
         
+        # Log to wandb more efficiently
         if self.use_wandb:
             import wandb
-            # Create a wandb Table with formatted text
-            columns = ["Sample", "Context", "Actual", "Student", "Teacher"]
-            data = [
-                [i+1, 
-                 sample['context'], 
-                 sample['actual_continuation'],
-                 sample['student_generation'],
-                 sample['teacher_generation']]
-                for i, sample in enumerate(samples)
-            ]
-            
-            table = wandb.Table(columns=columns, data=data)
             wandb.log({
-                "predictions/examples": table,
-                # Add metrics about generation quality
-                "predictions/student_teacher_similarity": wandb.Histogram(
-                    [self._compute_text_similarity(s['student_generation'], 
-                                                s['teacher_generation']) 
-                     for s in samples]
-                ),
+                "predictions/example": wandb.Table(
+                    columns=["Context", "Generated"],
+                    data=[[s['context'], s['student_generation']] for s in samples[:2]]  # Only log 2 samples
+                )
             }, step=self.global_step)
         
         return samples
