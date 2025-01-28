@@ -1,5 +1,5 @@
 model:
-  name: "reciprocate/tiny-llama"
+  name: "meta-llama/Llama-2-3b"  # or whichever LLaMA model you're using
   use_gradient_checkpointing: true
   mixed_precision: "bf16"  # or "fp16" if you want to use AMP
 
