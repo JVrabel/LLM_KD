@@ -547,6 +547,11 @@ class KDRecipeSingleDevice:
                 else:
                     loss, ntp_loss, kd_loss = self._loss_step(batch)
                 
+                # Track losses before scaling
+                step_loss = loss.item()
+                step_ntp_loss = ntp_loss.item()
+                step_kd_loss = kd_loss.item()
+                
                 # Scale loss for gradient accumulation
                 loss = loss / self.gradient_accumulation_steps
                 
@@ -555,8 +560,6 @@ class KDRecipeSingleDevice:
                     self.scaler.scale(loss).backward()
                 else:
                     loss.backward()
-                
-                del loss  # Free memory after backward
                 
                 if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
                     if self.use_amp:
@@ -574,58 +577,22 @@ class KDRecipeSingleDevice:
                     self.lr_scheduler.step()
                     
                     # Track losses
-                    total_loss += loss.item() * self.gradient_accumulation_steps
-                    total_ntp_loss += ntp_loss.item()
-                    total_kd_loss += kd_loss.item()
+                    total_loss += step_loss * self.gradient_accumulation_steps
+                    total_ntp_loss += step_ntp_loss
+                    total_kd_loss += step_kd_loss
                     logged_steps += 1
                     
-                    # Enhanced logging to wandb
-                    if self.use_wandb and self.global_step % self.log_every_n_steps == 0:
-                        import wandb
-                        wandb.log({
-                            "train/step_loss": loss.item() * self.gradient_accumulation_steps,
-                            "train/step_ntp_loss": ntp_loss.item(),
-                            "train/step_kd_loss": kd_loss.item(),
-                            "train/learning_rate": self.optimizer.param_groups[0]['lr'],
-                            "train/gpu_memory_gb": torch.cuda.max_memory_allocated() / 1e9,
-                            "train/step": self.global_step,
-                            "train/epoch": epoch + batch_idx / len(self.train_loader)
-                        }, step=self.global_step)
-                    
-                    # Evaluation
-                    if self.global_step % self.eval_every == 0:
-                        eval_loss, eval_ppl = self.evaluate(self.val_loader, steps=self.eval_steps)
-                        train_loss = total_loss / logged_steps
-                        train_ppl = torch.exp(torch.tensor(train_loss)).item()
-                        
-                        # Only generate samples after some training
-                        if self.global_step > 1000:  # Or some other threshold
-                            samples = self.generate_samples(batch)
-                            self.save_samples(samples, epoch, self.global_step)
-                        
-                        # Log detailed metrics
-                        metrics = {
-                            "eval/loss": eval_loss,
-                            "eval/ppl": eval_ppl,
-                            "train/avg_loss": train_loss,
-                            "train/ppl": train_ppl,
-                            "train/avg_ntp_loss": total_ntp_loss / logged_steps,
-                            "train/avg_kd_loss": total_kd_loss / logged_steps,
-                        }
-                        if self.use_wandb:
-                            wandb.log(metrics, step=self.global_step)
-                    
-                    self.global_step += 1
+                    # Update progress bar
+                    progress_bar.update(self.gradient_accumulation_steps)
+                    progress_bar.set_postfix({
+                        'loss': step_loss * self.gradient_accumulation_steps,
+                        'ntp_loss': step_ntp_loss,
+                        'kd_loss': step_kd_loss
+                    })
+                else:
+                    progress_bar.update(1)
                 
-                # Update progress bar
-                progress_bar.update(1)
-                progress_bar.set_postfix({
-                    'loss': loss.item() * self.gradient_accumulation_steps,
-                    'ntp_loss': ntp_loss.item(),
-                    'kd_loss': kd_loss.item()
-                })
-
-            progress_bar.close()
+                del loss, ntp_loss, kd_loss  # Free memory after using values
             
             avg_loss = total_loss / logged_steps
             print(f"Epoch {epoch+1} - Avg Loss: {avg_loss:.4f}")
