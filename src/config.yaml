@@ -12,6 +12,7 @@ data:
   batch_size: 24
   num_workers: 12
   test_path: "data/gutenberg/test/bookshelf_57_test.jsonl"
+  collapse_newlines: false  # Set to true if you want to remove empty lines
 
 training:
   learning_rate: 1.0e-4

@@ -15,107 +15,71 @@ from functools import partial
 import logging
 import yaml
 import argparse
+import numpy as np
+import mmap
+from pathlib import Path
 
-class SlidingWindowDataset(Dataset):
+class TokenizedDataset(Dataset):
+    """Memory efficient dataset that caches chunks in RAM."""
+    
     def __init__(self, file_path, tokenizer, seq_length=512, stride=256, max_tokens=None, logger=None):
         super().__init__()
         self.tokenizer = tokenizer
         self.seq_length = seq_length
         self.stride = stride
-        self.max_tokens = max_tokens
         self.logger = logger or logging.getLogger(__name__)
         
-        # Load and process text
-        self.logger.info(f"Loading data from: {file_path}")
-        with open(file_path, 'r', encoding='utf-8') as f:
-            text = f.read()
+        # Create cache directory
+        self.data_path = Path(file_path)
+        self.cache_dir = self.data_path.parent / f"{self.data_path.stem}_cache"
+        self.cache_dir.mkdir(exist_ok=True)
+        self.cache_path = self.cache_dir / "tokens.npy"
         
-        # Clean text before tokenization
-        text = self._clean_text(text)
+        # Load or create cached tokens
+        if self.cache_path.exists():
+            self.logger.info(f"Loading cached tokens from {self.cache_path}")
+            self.all_tokens = np.load(str(self.cache_path))
+        else:
+            self.logger.info(f"Creating token cache for {file_path}")
+            # Load and tokenize text
+            with open(file_path, 'r', encoding='utf-8') as f:
+                text = f.read()
+                text = text.replace('\r\n', '\n').replace('\r', '\n')
+                tokens = self.tokenizer.encode(text)
+                if max_tokens:
+                    tokens = tokens[:max_tokens]
+                self.all_tokens = np.array(tokens, dtype=np.int32)
+            # Save cache
+            np.save(str(self.cache_path), self.all_tokens)
         
-        # Tokenize text
-        self.logger.info("Tokenizing text...")
-        self.all_tokens = self.tokenizer.encode(text)
-        
-        # Store total number of tokens before any limiting
-        self.total_available_tokens = len(self.all_tokens)
-        self.logger.info(f"Total available tokens in {file_path}: {self.total_available_tokens:,}")
-        
-        # Apply token limit if specified
-        if max_tokens is not None:
-            if max_tokens > self.total_available_tokens:
-                warning_msg = (
-                    f"Requested {max_tokens:,} tokens but only {self.total_available_tokens:,} "
-                    f"are available in {file_path}. Using all available tokens."
-                )
-                warnings.warn(warning_msg)
-                self.logger.warning(warning_msg)
-            else:
-                self.logger.info(f"Limiting dataset to {max_tokens:,} tokens")
-                self.all_tokens = self.all_tokens[:max_tokens]
-        
-        # Calculate number of sequences
         self.n_sequences = max(0, (len(self.all_tokens) - seq_length) // stride + 1)
-        
-        # Log dataset statistics
-        stats = {
-            "file_path": file_path,
-            "total_tokens_after_limiting": len(self.all_tokens),
-            "n_sequences": self.n_sequences,
-            "sequence_length": seq_length,
-            "stride": stride,
-            "max_tokens_requested": max_tokens,
-            "total_available_tokens": self.total_available_tokens
-        }
-        
-        self.logger.info("Dataset statistics:")
-        for key, value in stats.items():
-            self.logger.info(f"  {key}: {value}")
-
-        # Create examples
-        self.examples = []
-        for i in range(self.n_sequences):
-            start_idx = i * self.stride
-            end_idx = start_idx + self.seq_length
-            
-            sequence = self.all_tokens[start_idx:end_idx]
-            attention_mask = [1] * len(sequence)
-            
-            if len(sequence) < self.seq_length:
-                padding_length = self.seq_length - len(sequence)
-                sequence = sequence + [self.tokenizer.pad_token_id] * padding_length
-                attention_mask = attention_mask + [0] * padding_length
-            
-            input_ids = torch.tensor(sequence)
-            attention_mask = torch.tensor(attention_mask)
-            
-            self.examples.append({
-                'input_ids': input_ids,
-                'attention_mask': attention_mask
-            })
-
-        self.logger.info(f"Created {len(self.examples)} examples from {len(self.all_tokens)} tokens")
+        total_size_gb = self.all_tokens.nbytes / 1024**3
+        self.logger.info(f"Dataset contains {len(self.all_tokens):,} tokens ({total_size_gb:.2f} GB)")
+        self.logger.info(f"Created {self.n_sequences:,} sequences with stride {stride}")
 
     def __len__(self):
-        return len(self.examples)
+        return self.n_sequences
 
     def __getitem__(self, idx):
-        return self.examples[idx]
-
-    def _clean_text(self, text):
-        """Clean text before tokenization."""
-        # Replace multiple newlines with single newline
-        text = '\n'.join(line for line in text.split('\n') if line.strip())
+        start_idx = idx * self.stride
+        end_idx = start_idx + self.seq_length
         
-        # Replace multiple spaces with single space
-        text = ' '.join(text.split())
+        # Get sequence
+        sequence = self.all_tokens[start_idx:end_idx].copy()
+        attention_mask = np.ones(len(sequence), dtype=np.int32)
         
-        # Add space after punctuation if missing
-        for punct in '.!?,;:':
-            text = text.replace(punct + ' ', punct + ' ')
-            text = text.replace(punct, punct + ' ')
+        # Handle padding if needed
+        if len(sequence) < self.seq_length:
+            padding_length = self.seq_length - len(sequence)
+            sequence = np.pad(sequence, (0, padding_length), 
+                            constant_values=self.tokenizer.pad_token_id)
+            attention_mask = np.pad(attention_mask, (0, padding_length),
+                                  constant_values=0)
         
-        return text
+        return {
+            'input_ids': torch.from_numpy(sequence).long(),
+            'attention_mask': torch.from_numpy(attention_mask).long()
+        }
 
 def collate_fn(batch):
     input_ids = torch.stack([item['input_ids'] for item in batch])
@@ -131,7 +95,7 @@ class KDRecipeSingleDevice:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         # Change dtype to float16 for AMP or disable AMP for bfloat16
-        if torch.cuda.is_bf16_supported():
+        if True:
             self.dtype = torch.bfloat16
             self.use_amp = False  # Disable AMP when using bfloat16
         else:
@@ -188,9 +152,7 @@ class KDRecipeSingleDevice:
         return seed
 
     def setup(self):
-        self.tokenizer = AutoTokenizer.from_pretrained(self.cfg['model']['name'])
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-
+        self._setup_tokenizer()
         self.student_model = self._setup_student_model()
         self.teacher_model = self._setup_teacher_model()
 
@@ -209,6 +171,29 @@ class KDRecipeSingleDevice:
         self.ntp_loss_fn = torch.nn.CrossEntropyLoss(ignore_index=self.tokenizer.pad_token_id)
         self.kd_loss_fn = self.kl_div_loss
 
+    def _setup_tokenizer(self):
+        """Setup and test tokenizer behavior with special characters."""
+        self.tokenizer = AutoTokenizer.from_pretrained(self.cfg['model']['name'])
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+        # Test tokenizer behavior with special characters
+        test_cases = [
+            "Hello\r\nWorld",  # Windows newline
+            "Hello\nWorld",    # Unix newline
+            "Hello\rWorld",    # Old Mac newline
+            "Hello  World",    # Multiple spaces
+            "Hello\n\nWorld",  # Multiple newlines
+        ]
+        
+        self.logger.info("Testing LLaMA tokenizer behavior with special characters:")
+        for test in test_cases:
+            tokens = self.tokenizer.encode(test)
+            decoded = self.tokenizer.decode(tokens)
+            self.logger.info(f"\nOriginal: {repr(test)}")
+            self.logger.info(f"Decoded:  {repr(decoded)}")
+        
+        return self.tokenizer
+
     def _setup_student_model(self):
         """Setup student model - same architecture as teacher but randomly initialized."""
         config = LlamaConfig.from_pretrained(self.cfg['model']['name'])
@@ -219,52 +204,53 @@ class KDRecipeSingleDevice:
         return model.to(self.device)
 
     def _setup_teacher_model(self):
-        """Setup teacher model - same architecture but with pretrained weights."""
+        """Setup teacher model with optimized quantization."""
         quantization_config = BitsAndBytesConfig(
             load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4"
+            bnb_4bit_compute_dtype=torch.float16,  # Use float16 instead of bfloat16
+            bnb_4bit_use_double_quant=False,  # Disable double quantization
+            bnb_4bit_quant_type="nf4",
         )
         
-        # Load pretrained model with weights
+        self.logger.info("Loading teacher model with 4-bit quantization...")
         model = LlamaForCausalLM.from_pretrained(
-            self.cfg['model']['name'],  # Same model name/architecture as student
+            self.cfg['model']['name'],
             quantization_config=quantization_config,
-            torch_dtype=torch.bfloat16,
             device_map="auto",
+            torch_dtype=torch.float16
         )
         
-        # Verify model is loaded with pretrained weights
-        self.logger.info("Verifying teacher model...")
-        test_input = self.tokenizer("Hello, how are", return_tensors="pt").to(self.device)
-        with torch.no_grad():
-            test_output = model.generate(
-                test_input.input_ids,
-                max_new_tokens=10,
-                num_beams=4,
-                temperature=0.7
-            )
-        test_output_text = self.tokenizer.decode(test_output[0], skip_special_tokens=True)
-        self.logger.info(f"Teacher test output: {test_output_text}")
-        
+        # Optimize memory usage
         model.eval()
-        for param in model.parameters():
-            param.requires_grad = False
+        model.requires_grad_(False)  # More efficient than looping through parameters
+        
+        # Quick verification
+        if self.cfg.get('model', {}).get('verify_teacher', True):
+            self._verify_teacher_model(model)
         
         return model
 
+    def _verify_teacher_model(self, model):
+        """Verify teacher model with minimal memory usage."""
+        test_input = self.tokenizer("Test input:", return_tensors="pt").to(self.device)
+        with torch.no_grad():
+            test_output = model.generate(
+                test_input.input_ids,
+                max_new_tokens=5,
+                num_beams=1,  # Reduce beam size for verification
+                temperature=0.7
+            )
+        test_text = self.tokenizer.decode(test_output[0], skip_special_tokens=True)
+        self.logger.info(f"Teacher verification output: {test_text}")
+
     def _setup_data(self):
-        """Setup data loaders with multiple datasets."""
+        """Setup data loaders with memory-mapped datasets."""
         self.logger.info("Setting up data loaders...")
         
         # Create datasets
         datasets = []
-        total_tokens_requested = 0
-        total_tokens_available = 0
-        
         for source in self.cfg['data']['sources']:
-            dataset = SlidingWindowDataset(
+            dataset = TokenizedDataset(
                 file_path=source['path'],
                 tokenizer=self.tokenizer,
                 seq_length=self.cfg['data']['max_length'],
@@ -273,20 +259,16 @@ class KDRecipeSingleDevice:
                 logger=self.logger
             )
             datasets.append(dataset)
-            total_tokens_requested += source.get('max_tokens', dataset.total_available_tokens)
-            total_tokens_available += dataset.total_available_tokens
         
         # Combine datasets if multiple
         if len(datasets) > 1:
             train_dataset = ConcatDataset(datasets)
             self.logger.info(f"Combined {len(datasets)} datasets:")
-            self.logger.info(f"Total tokens requested: {total_tokens_requested:,}")
-            self.logger.info(f"Total tokens available: {total_tokens_available:,}")
         else:
             train_dataset = datasets[0]
         
         # Create test dataset
-        test_dataset = SlidingWindowDataset(
+        test_dataset = TokenizedDataset(
             file_path=self.cfg['data']['test_path'],
             tokenizer=self.tokenizer,
             seq_length=self.cfg['data']['max_length'],
@@ -362,33 +344,61 @@ class KDRecipeSingleDevice:
         return loss
 
     def _loss_step(self, batch):
-        input_ids = batch['input_ids'].to(self.device)
-        attention_mask = batch['attention_mask'].to(self.device)
-
-        # Teacher outputs might be accumulating in memory
-        with torch.no_grad():
-            teacher_outputs = self.teacher_model(input_ids=input_ids, attention_mask=attention_mask)
-            teacher_logits = teacher_outputs.logits.detach()  # Explicitly detach
-            del teacher_outputs  # Free memory
-
-        student_outputs = self.student_model(input_ids=input_ids, attention_mask=attention_mask)
-        student_logits = student_outputs.logits
+        """Compute loss with careful memory management."""
+        # Move batch to device and ensure contiguous memory
+        input_ids = batch['input_ids'].to(self.device, non_blocking=True).contiguous()
+        attention_mask = batch['attention_mask'].to(self.device, non_blocking=True).contiguous()
         
-        # Free memory
-        del student_outputs
+        # Get teacher predictions
+        with torch.no_grad(), torch.cuda.amp.autocast(enabled=self.use_amp):
+            teacher_outputs = self.teacher_model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                use_cache=False  # Disable KV cache to save memory
+            )
+            teacher_logits = teacher_outputs.logits.detach()
+            del teacher_outputs
         
-        shifted_logits = student_logits[..., :-1, :].contiguous()
-        shifted_labels = input_ids[..., 1:].contiguous()
+        # Get student predictions
+        with torch.cuda.amp.autocast(enabled=self.use_amp):
+            student_outputs = self.student_model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                use_cache=False
+            )
+            student_logits = student_outputs.logits
+            del student_outputs
         
-        ntp_loss = self.ntp_loss_fn(shifted_logits.view(-1, shifted_logits.size(-1)), shifted_labels.view(-1))
-        kd_loss = self.kd_loss_fn(shifted_logits.view(-1, shifted_logits.size(-1)), 
-                                  teacher_logits[..., :-1, :].contiguous().view(-1, teacher_logits.size(-1)), 
-                                  shifted_labels.view(-1))
-
-        loss = (1 - self.kd_ratio) * ntp_loss + self.kd_ratio * kd_loss
+        # Prepare shifted sequences for loss computation
+        with torch.cuda.amp.autocast(enabled=self.use_amp):
+            # Shift and prepare logits/labels
+            shifted_logits = student_logits[..., :-1, :].contiguous()
+            shifted_labels = input_ids[..., 1:].contiguous()
+            shifted_teacher_logits = teacher_logits[..., :-1, :].contiguous()
+            
+            del student_logits, teacher_logits  # Free original logits
+            
+            # Compute losses
+            ntp_loss = self.ntp_loss_fn(
+                shifted_logits.view(-1, shifted_logits.size(-1)),
+                shifted_labels.view(-1)
+            )
+            
+            kd_loss = self.kd_loss_fn(
+                shifted_logits.view(-1, shifted_logits.size(-1)),
+                shifted_teacher_logits.view(-1, shifted_teacher_logits.size(-1)),
+                shifted_labels.view(-1)
+            )
+            
+            # Compute weighted loss
+            loss = (1 - self.kd_ratio) * ntp_loss + self.kd_ratio * kd_loss
+            
+            # Clean up remaining tensors
+            del shifted_logits, shifted_teacher_logits, shifted_labels
         
-        # Clean up
-        del teacher_logits, student_logits, shifted_logits, shifted_labels
+        # Force garbage collection and clear cache
+        if self.global_step % self.cfg.get('memory_cleanup_every', 50) == 0:
+            torch.cuda.empty_cache()
         
         return loss, ntp_loss, kd_loss
 
@@ -535,95 +545,81 @@ class KDRecipeSingleDevice:
             progress_bar = tqdm(total=len(self.train_loader), desc=f"Epoch {epoch+1}")
             
             for batch_idx, batch in enumerate(self.train_loader):
-                # Clear cache periodically
+                # Clear cache at the start of accumulation steps
                 if batch_idx % self.gradient_accumulation_steps == 0:
                     torch.cuda.empty_cache()
-                    
-                batch = {k: v.to(self.device) for k, v in batch.items()}
+                
+                # Forward and backward passes
+                loss, ntp_loss, kd_loss = self._loss_step(batch)
+                scaled_loss = loss / self.gradient_accumulation_steps
                 
                 if self.use_amp:
-                    with torch.cuda.amp.autocast():
-                        loss, ntp_loss, kd_loss = self._loss_step(batch)
+                    self.scaler.scale(scaled_loss).backward()
                 else:
-                    loss, ntp_loss, kd_loss = self._loss_step(batch)
+                    scaled_loss.backward()
                 
-                # Track losses before scaling
-                step_loss = loss.item()
-                step_ntp_loss = ntp_loss.item()
-                step_kd_loss = kd_loss.item()
-                
-                # Scale loss for gradient accumulation
-                loss = loss / self.gradient_accumulation_steps
-                
-                # Backward pass
-                if self.use_amp:
-                    self.scaler.scale(loss).backward()
-                else:
-                    loss.backward()
-                
+                # Update on accumulation steps
                 if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
-                    if self.use_amp:
-                        if self.clip_grad_norm is not None:
+                    if self.clip_grad_norm is not None:
+                        if self.use_amp:
                             self.scaler.unscale_(self.optimizer)
-                            clip_grad_norm_(self.student_model.parameters(), self.clip_grad_norm)
+                        clip_grad_norm_(self.student_model.parameters(), self.clip_grad_norm)
+                    
+                    if self.use_amp:
                         self.scaler.step(self.optimizer)
                         self.scaler.update()
                     else:
-                        if self.clip_grad_norm is not None:
-                            clip_grad_norm_(self.student_model.parameters(), self.clip_grad_norm)
                         self.optimizer.step()
                     
-                    self.optimizer.zero_grad(set_to_none=True)
+                    self.optimizer.zero_grad(set_to_none=True)  # More efficient than zero_grad()
                     self.lr_scheduler.step()
                     
-                    # Track losses
-                    total_loss += step_loss * self.gradient_accumulation_steps
-                    total_ntp_loss += step_ntp_loss
-                    total_kd_loss += step_kd_loss
-                    logged_steps += 1
-                    
-                    # Update progress bar
-                    progress_bar.update(self.gradient_accumulation_steps)
-                    progress_bar.set_postfix({
-                        'loss': step_loss * self.gradient_accumulation_steps,
-                        'ntp_loss': step_ntp_loss,
-                        'kd_loss': step_kd_loss
-                    })
-                    
-                    # Log metrics every N steps to avoid wandb overhead
-                    if self.use_wandb and self.global_step % self.cfg.get('log_every_n_steps', 10) == 0:
-                        import wandb
-                        metrics = {
-                            "train/loss": step_loss * self.gradient_accumulation_steps,
-                            "train/ntp_loss": step_ntp_loss,
-                            "train/kd_loss": step_kd_loss,
+                    # Log metrics and generate samples
+                    if self.use_wandb and self.global_step % 10 == 0:  # Log every 10 steps
+                        wandb.log({
+                            "train/loss": loss.item(),
+                            "train/ntp_loss": ntp_loss.item(),
+                            "train/kd_loss": kd_loss.item(),
                             "train/learning_rate": self.optimizer.param_groups[0]['lr'],
                             "train/epoch": epoch,
-                        }
-                        wandb.log(metrics, step=self.global_step)
-
-                    # Generate samples periodically
-                    if self.use_wandb and self.global_step % self.cfg.get('generate_every_n_steps', 500) == 0:
-                        with torch.no_grad():  # Ensure no memory leaks
+                        }, step=self.global_step)
+                    
+                    # Generate samples every 500 steps
+                    if self.use_wandb and self.global_step % 500 == 0:
+                        with torch.no_grad():
                             val_batch = next(iter(self.val_loader))
-                            samples = self.generate_samples(val_batch, num_samples=1)  # Just one sample for efficiency
-                            
-                            # Log sample with timestamp for historical tracking
+                            samples = self.generate_samples(val_batch, num_samples=1)
                             wandb.log({
                                 "generation/timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                 "generation/step": self.global_step,
-                                "generation/context": samples[0]['context'][-100:],  # Last 100 chars
-                                "generation/actual": samples[0]['actual_continuation'][:50],  # First 50 chars
+                                "generation/context": samples[0]['context'][-100:],
+                                "generation/actual": samples[0]['actual_continuation'][:50],
                                 "generation/predicted": samples[0]['student_generation'][:50],
                             }, step=self.global_step)
+                            del samples  # Clean up
+                            torch.cuda.empty_cache()
                     
                     self.global_step += 1
-                else:
-                    progress_bar.update(1)
                 
-                del loss, ntp_loss, kd_loss  # Free memory after using values
+                # Update progress bar
+                progress_bar.update(1)
+                progress_bar.set_postfix({
+                    'loss': loss.item(),
+                    'ntp_loss': ntp_loss.item(),
+                    'kd_loss': kd_loss.item()
+                })
+                
+                # Track total losses
+                total_loss += loss.item()
+                total_ntp_loss += ntp_loss.item()
+                total_kd_loss += kd_loss.item()
+                logged_steps += 1
+                
+                # Clean up current step
+                del loss, ntp_loss, kd_loss, scaled_loss
             
-            # End of epoch logging
+            # End of epoch handling
+            progress_bar.close()
             avg_loss = total_loss / logged_steps
             val_loss, val_ppl = self.evaluate(self.val_loader)
             
