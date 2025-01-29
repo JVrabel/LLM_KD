@@ -590,30 +590,62 @@ class KDRecipeSingleDevice:
                         'kd_loss': step_kd_loss
                     })
                     
-                    # Log training metrics to wandb
-                    if self.use_wandb:
+                    # Log metrics every N steps to avoid wandb overhead
+                    if self.use_wandb and self.global_step % self.cfg.get('log_every_n_steps', 10) == 0:
                         import wandb
-                        wandb.log({
+                        metrics = {
                             "train/loss": step_loss * self.gradient_accumulation_steps,
                             "train/ntp_loss": step_ntp_loss,
                             "train/kd_loss": step_kd_loss,
                             "train/learning_rate": self.optimizer.param_groups[0]['lr'],
                             "train/epoch": epoch,
-                            "train/global_step": self.global_step,
-                        }, step=self.global_step)
+                        }
+                        wandb.log(metrics, step=self.global_step)
+
+                    # Generate samples periodically
+                    if self.use_wandb and self.global_step % self.cfg.get('generate_every_n_steps', 500) == 0:
+                        with torch.no_grad():  # Ensure no memory leaks
+                            val_batch = next(iter(self.val_loader))
+                            samples = self.generate_samples(val_batch, num_samples=1)  # Just one sample for efficiency
+                            
+                            # Log sample with timestamp for historical tracking
+                            wandb.log({
+                                "generation/timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "generation/step": self.global_step,
+                                "generation/context": samples[0]['context'][-100:],  # Last 100 chars
+                                "generation/actual": samples[0]['actual_continuation'][:50],  # First 50 chars
+                                "generation/predicted": samples[0]['student_generation'][:50],
+                            }, step=self.global_step)
+                    
+                    self.global_step += 1
                 else:
                     progress_bar.update(1)
                 
                 del loss, ntp_loss, kd_loss  # Free memory after using values
             
+            # End of epoch logging
             avg_loss = total_loss / logged_steps
-            print(f"Epoch {epoch+1} - Avg Loss: {avg_loss:.4f}")
-            
-            self.epochs_run += 1
-
-            # Evaluate on validation set
             val_loss, val_ppl = self.evaluate(self.val_loader)
-            print(f"Validation Loss: {val_loss:.4f}, Validation PPL: {val_ppl:.4f}")
+            
+            # Log epoch metrics
+            if self.use_wandb:
+                wandb.log({
+                    "epoch/train_loss": avg_loss,
+                    "epoch/val_loss": val_loss,
+                    "epoch/val_perplexity": val_ppl,
+                    "epoch/number": epoch,
+                }, step=self.global_step)
+                
+                # Save learning curves as plot
+                fig = plt.figure(figsize=(10, 6))
+                plt.plot(self.train_losses, label='Train')
+                plt.plot(self.eval_losses, label='Val')
+                plt.title('Loss Curves')
+                plt.legend()
+                wandb.log({"charts/loss_curve": wandb.Image(fig)}, step=self.global_step)
+                plt.close(fig)
+
+            self.epochs_run += 1
 
             # Save only if it's the best model
             if val_loss < self.best_val_loss:
@@ -631,28 +663,6 @@ class KDRecipeSingleDevice:
                 f"Val Loss: {val_loss:.4f}, "
                 f"Val PPL: {val_ppl:.4f}"
             )
-
-            # Log epoch-level metrics
-            if self.use_wandb:
-                import wandb
-                wandb.log({
-                    "epoch/train_loss": avg_loss,
-                    "epoch/val_loss": val_loss,
-                    "epoch/val_perplexity": val_ppl,
-                    "epoch/current": epoch,
-                }, step=self.global_step)
-                
-                # Generate and log sample predictions every N epochs
-                if epoch % self.cfg.get('generation_every_n_epochs', 5) == 0:
-                    batch = next(iter(self.val_loader))
-                    samples = self.generate_samples(batch, num_samples=2)  # Reduced samples for efficiency
-                    wandb.log({
-                        "samples/text": wandb.Table(
-                            columns=["Context", "Actual", "Generated"],
-                            data=[[s['context'], s['actual_continuation'], s['student_generation']] 
-                                 for s in samples]
-                        )
-                    }, step=self.global_step)
 
         self.logger.info("Training completed")
 
