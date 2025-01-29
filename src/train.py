@@ -589,6 +589,18 @@ class KDRecipeSingleDevice:
                         'ntp_loss': step_ntp_loss,
                         'kd_loss': step_kd_loss
                     })
+                    
+                    # Log training metrics to wandb
+                    if self.use_wandb:
+                        import wandb
+                        wandb.log({
+                            "train/loss": step_loss * self.gradient_accumulation_steps,
+                            "train/ntp_loss": step_ntp_loss,
+                            "train/kd_loss": step_kd_loss,
+                            "train/learning_rate": self.optimizer.param_groups[0]['lr'],
+                            "train/epoch": epoch,
+                            "train/global_step": self.global_step,
+                        }, step=self.global_step)
                 else:
                     progress_bar.update(1)
                 
@@ -619,6 +631,28 @@ class KDRecipeSingleDevice:
                 f"Val Loss: {val_loss:.4f}, "
                 f"Val PPL: {val_ppl:.4f}"
             )
+
+            # Log epoch-level metrics
+            if self.use_wandb:
+                import wandb
+                wandb.log({
+                    "epoch/train_loss": avg_loss,
+                    "epoch/val_loss": val_loss,
+                    "epoch/val_perplexity": val_ppl,
+                    "epoch/current": epoch,
+                }, step=self.global_step)
+                
+                # Generate and log sample predictions every N epochs
+                if epoch % self.cfg.get('generation_every_n_epochs', 5) == 0:
+                    batch = next(iter(self.val_loader))
+                    samples = self.generate_samples(batch, num_samples=2)  # Reduced samples for efficiency
+                    wandb.log({
+                        "samples/text": wandb.Table(
+                            columns=["Context", "Actual", "Generated"],
+                            data=[[s['context'], s['actual_continuation'], s['student_generation']] 
+                                 for s in samples]
+                        )
+                    }, step=self.global_step)
 
         self.logger.info("Training completed")
 
