@@ -6,11 +6,11 @@ model:
 data:
   sources:
     - path: "data/gutenberg/train/bookshelf_57_train.jsonl"
-      max_tokens: 20000000  # Adjust based on your needs
+      max_tokens: 20000  # Adjust based on your needs
   max_length: 512
   stride: 380
-  batch_size: 24
-  num_workers: 12
+  batch_size: 12
+  num_workers: 4
   test_path: "data/gutenberg/test/bookshelf_57_test.jsonl"
   collapse_newlines: false  # Set to true if you want to remove empty lines
 
