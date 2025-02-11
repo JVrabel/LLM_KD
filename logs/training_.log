@@ -1,0 +1,22 @@
+/root/.local/lib/python3.10/site-packages/torch/distributed/launch.py:208: FutureWarning: The module torch.distributed.launch is deprecated
+and will be removed in future. Use torchrun.
+Note that --use-env is set by default in torchrun.
+If your script expects `--local-rank` argument to be set, please
+change it to read from `os.environ['LOCAL_RANK']` instead. See 
+https://pytorch.org/docs/stable/distributed.html#launch-utility for 
+further instructions
+
+  main()
+usage: launch.py [-h] [--nnodes NNODES] [--nproc-per-node NPROC_PER_NODE]
+                 [--rdzv-backend RDZV_BACKEND] [--rdzv-endpoint RDZV_ENDPOINT]
+                 [--rdzv-id RDZV_ID] [--rdzv-conf RDZV_CONF] [--standalone]
+                 [--max-restarts MAX_RESTARTS]
+                 [--monitor-interval MONITOR_INTERVAL]
+                 [--start-method {spawn,fork,forkserver}] [--role ROLE] [-m]
+                 [--no-python] [--run-path] [--log-dir LOG_DIR] [-r REDIRECTS]
+                 [-t TEE] [--local-ranks-filter LOCAL_RANKS_FILTER]
+                 [--node-rank NODE_RANK] [--master-addr MASTER_ADDR]
+                 [--master-port MASTER_PORT] [--local-addr LOCAL_ADDR]
+                 [--logs-specs LOGS_SPECS] [--use-env]
+                 training_script ...
+launch.py: error: argument --master-port/--master_port: invalid int value: ''

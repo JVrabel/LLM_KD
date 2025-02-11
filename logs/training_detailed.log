@@ -1,0 +1,71 @@
+/root/.local/lib/python3.10/site-packages/torch/distributed/launch.py:208: FutureWarning: The module torch.distributed.launch is deprecated
+and will be removed in future. Use torchrun.
+Note that --use-env is set by default in torchrun.
+If your script expects `--local-rank` argument to be set, please
+change it to read from `os.environ['LOCAL_RANK']` instead. See 
+https://pytorch.org/docs/stable/distributed.html#launch-utility for 
+further instructions
+
+  main()
+usage: train_distr.py [-h] --config CONFIG [--resume RESUME]
+                      [--local_rank LOCAL_RANK]
+usage: train_distr.py [-h] --config CONFIG [--resume RESUME]
+                      [--local_rank LOCAL_RANK]
+train_distr.py: error: unrecognized arguments: --local-rank=3
+train_distr.py: error: unrecognized arguments: --local-rank=0
+usage: train_distr.py [-h] --config CONFIG [--resume RESUME]
+                      [--local_rank LOCAL_RANK]
+train_distr.py: error: unrecognized arguments: --local-rank=1
+usage: train_distr.py [-h] --config CONFIG [--resume RESUME]
+                      [--local_rank LOCAL_RANK]
+train_distr.py: error: unrecognized arguments: --local-rank=2
+W0211 19:15:08.607058 23456244216256 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 473730 closing signal SIGTERM
+E0211 19:15:09.221498 23456244216256 torch/distributed/elastic/multiprocessing/api.py:833] failed (exitcode: 2) local_rank: 0 (pid: 473728) of binary: /usr/bin/python
+Traceback (most recent call last):
+  File "/usr/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/launch.py", line 208, in <module>
+    main()
+  File "/root/.local/lib/python3.10/site-packages/typing_extensions.py", line 2853, in wrapper
+    return arg(*args, **kwargs)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/launch.py", line 204, in main
+    launch(args)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/launch.py", line 189, in launch
+    run(args)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/run.py", line 892, in run
+    elastic_launch(
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/launcher/api.py", line 133, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/launcher/api.py", line 264, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+src/train_distr.py FAILED
+------------------------------------------------------------
+Failures:
+[1]:
+  time      : 2025-02-11_19:15:08
+  host      : a100.cm.cluster
+  rank      : 1 (local_rank: 1)
+  exitcode  : 2 (pid: 473729)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+[2]:
+  time      : 2025-02-11_19:15:08
+  host      : a100.cm.cluster
+  rank      : 3 (local_rank: 3)
+  exitcode  : 2 (pid: 473731)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2025-02-11_19:15:08
+  host      : a100.cm.cluster
+  rank      : 0 (local_rank: 0)
+  exitcode  : 2 (pid: 473728)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

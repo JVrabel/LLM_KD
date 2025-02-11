@@ -1,0 +1,101 @@
+WARNING:__main__:
+*****************************************
+Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. 
+*****************************************
+Traceback (most recent call last):
+  File "/workspace/src/train_distr.py", line 531, in <module>
+    main()
+  File "/workspace/src/train_distr.py", line 514, in main
+    recipe = KDRecipeSingleDevice(cfg)
+  File "/workspace/src/train_distr.py", line 30, in __init__
+    self.dist_info, self.local_rank = setup_distributed(cfg)
+  File "/workspace/src/distributed_utils.py", line 29, in setup_distributed
+    dist.init_process_group(
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/c10d_logger.py", line 79, in wrapper
+    return func(*args, **kwargs)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/c10d_logger.py", line 93, in wrapper
+    func_return = func(*args, **kwargs)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/distributed_c10d.py", line 1361, in init_process_group
+    store, rank, world_size = next(rendezvous_iterator)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/rendezvous.py", line 258, in _env_rendezvous_handler
+    store = _create_c10d_store(master_addr, master_port, rank, world_size, timeout, use_libuv)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/rendezvous.py", line 185, in _create_c10d_store
+    return TCPStore(
+RuntimeError: The server socket has failed to listen on any local network address. useIpv6: 0, code: -98, name: EADDRINUSE, message: address already in use
+Traceback (most recent call last):
+  File "/workspace/src/train_distr.py", line 531, in <module>
+    main()
+  File "/workspace/src/train_distr.py", line 514, in main
+    recipe = KDRecipeSingleDevice(cfg)
+  File "/workspace/src/train_distr.py", line 30, in __init__
+    self.dist_info, self.local_rank = setup_distributed(cfg)
+  File "/workspace/src/distributed_utils.py", line 29, in setup_distributed
+    dist.init_process_group(
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/c10d_logger.py", line 79, in wrapper
+    return func(*args, **kwargs)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/c10d_logger.py", line 93, in wrapper
+    func_return = func(*args, **kwargs)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/distributed_c10d.py", line 1361, in init_process_group
+    store, rank, world_size = next(rendezvous_iterator)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/rendezvous.py", line 258, in _env_rendezvous_handler
+    store = _create_c10d_store(master_addr, master_port, rank, world_size, timeout, use_libuv)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/rendezvous.py", line 185, in _create_c10d_store
+    return TCPStore(
+RuntimeError: The server socket has failed to listen on any local network address. useIpv6: 0, code: -98, name: EADDRINUSE, message: address already in use
+Traceback (most recent call last):
+  File "/workspace/src/train_distr.py", line 531, in <module>
+    main()
+  File "/workspace/src/train_distr.py", line 514, in main
+    recipe = KDRecipeSingleDevice(cfg)
+  File "/workspace/src/train_distr.py", line 30, in __init__
+    self.dist_info, self.local_rank = setup_distributed(cfg)
+  File "/workspace/src/distributed_utils.py", line 29, in setup_distributed
+    dist.init_process_group(
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/c10d_logger.py", line 79, in wrapper
+    return func(*args, **kwargs)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/c10d_logger.py", line 93, in wrapper
+    func_return = func(*args, **kwargs)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/distributed_c10d.py", line 1361, in init_process_group
+    store, rank, world_size = next(rendezvous_iterator)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/rendezvous.py", line 258, in _env_rendezvous_handler
+    store = _create_c10d_store(master_addr, master_port, rank, world_size, timeout, use_libuv)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/rendezvous.py", line 185, in _create_c10d_store
+    return TCPStore(
+RuntimeError: The server socket has failed to listen on any local network address. useIpv6: 0, code: -98, name: EADDRINUSE, message: address already in use
+W0210 14:23:37.385138 23456244216256 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 3032302 closing signal SIGTERM
+W0210 14:23:37.385370 23456244216256 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 3032303 closing signal SIGTERM
+W0210 14:23:37.385441 23456244216256 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 3032305 closing signal SIGTERM
+E0210 14:23:38.250077 23456244216256 torch/distributed/elastic/multiprocessing/api.py:833] failed (exitcode: 1) local_rank: 2 (pid: 3032304) of binary: /usr/bin/python
+Traceback (most recent call last):
+  File "/usr/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/run.py", line 905, in <module>
+    main()
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 348, in wrapper
+    return f(*args, **kwargs)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/run.py", line 901, in main
+    run(args)
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/run.py", line 892, in run
+    elastic_launch(
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/launcher/api.py", line 133, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+  File "/root/.local/lib/python3.10/site-packages/torch/distributed/launcher/api.py", line 264, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+src/train_distr.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2025-02-10_14:23:37
+  host      : a100.cm.cluster
+  rank      : 2 (local_rank: 2)
+  exitcode  : 1 (pid: 3032304)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
