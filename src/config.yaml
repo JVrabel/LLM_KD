@@ -9,7 +9,7 @@ data:
     - path: "data/gutenberg/train/bookshelf_57_train.jsonl"
   max_length: 512
   stride: 380
-  batch_size: 4
+  batch_size: 16
 
 training:
   learning_rate: 1.0e-4
