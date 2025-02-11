@@ -23,44 +23,22 @@ def setup_distributed(cfg):
             logger.info(f"CUDA Available: {torch.cuda.is_available()}")
             logger.info(f"Number of GPUs: {torch.cuda.device_count()}")
             
-            # Print all environment variables
-            logger.info("=== Environment Variables ===")
-            env_vars = ['MASTER_ADDR', 'MASTER_PORT', 'WORLD_SIZE', 'RANK', 'LOCAL_RANK']
-            for var in env_vars:
-                logger.info(f"{var}: {os.environ.get(var, 'Not set')}")
-            
             try:
-                # Get process info
+                # Get process info from environment (torchrun sets these)
+                local_rank = int(os.environ.get('LOCAL_RANK', '0'))
                 rank = int(os.environ.get('RANK', '0'))
                 world_size = int(os.environ.get('WORLD_SIZE', '1'))
-                local_rank = int(os.environ.get('LOCAL_RANK', '0'))
-            except ValueError as e:
-                logger.error("Failed to parse rank/world_size/local_rank from environment")
-                raise
-            
-            logger.info(f"Process info - Rank: {rank}, World Size: {world_size}, Local Rank: {local_rank}")
-            
-            # Initialize process group with more explicit error handling
-            try:
-                # Set CUDA device before init
-                if torch.cuda.is_available():
-                    torch.cuda.set_device(local_rank)
-                    logger.info(f"Set CUDA device to: {local_rank}")
+                
+                logger.info(f"Process info - Rank: {rank}, World Size: {world_size}, Local Rank: {local_rank}")
                 
                 # Initialize process group
-                logger.info("Initializing process group...")
+                if torch.cuda.is_available():
+                    torch.cuda.set_device(local_rank)
+                
                 dist.init_process_group(
                     backend='nccl',
-                    init_method='env://',
-                    world_size=world_size,
-                    rank=rank,
-                    timeout=datetime.timedelta(minutes=30)
+                    init_method='env://'
                 )
-                
-                if not dist.is_initialized():
-                    raise RuntimeError("Failed to initialize process group")
-                
-                logger.info(f"Process group initialized. Is_initialized: {dist.is_initialized()}")
                 
                 return {
                     'world_size': world_size,
