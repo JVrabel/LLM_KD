@@ -83,14 +83,33 @@ class KDRecipeSingleDevice:
         self.best_val_loss = float('inf')
 
         # Initialize wandb if enabled (only on main process)
-        if cfg.get('wandb', {}).get('enabled', False) and (self.dist_info is None or self.dist_info['rank'] == 0):
-            wandb.init(
-                project=cfg['wandb']['project'],
-                name=cfg['wandb']['name'] or f"run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                config=cfg,
-                tags=cfg['wandb']['tags'],
-                notes=cfg['wandb']['notes']
-            )
+        if cfg.get('wandb', {}).get('enabled', False):
+            # Only initialize wandb on the main process (rank 0)
+            if self.dist_info is None or self.dist_info['rank'] == 0:
+                if cfg['resume_from_checkpoint']:
+                    # Resume wandb run if resuming from checkpoint
+                    wandb_run_path = cfg['wandb'].get('resume_id')
+                    if not wandb_run_path:
+                        print("Warning: Resuming training but no wandb run_path provided. Creating new run.")
+                    
+                    wandb.init(
+                        project=cfg['wandb']['project'],
+                        name=cfg['wandb']['name'],
+                        id=wandb_run_path,  # Will resume run if ID exists
+                        resume="allow",
+                        config=cfg,
+                        tags=cfg['wandb']['tags'],
+                        notes=cfg['wandb']['notes']
+                    )
+                else:
+                    # Create new wandb run
+                    wandb.init(
+                        project=cfg['wandb']['project'],
+                        name=cfg['wandb']['name'] or f"run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                        config=cfg,
+                        tags=cfg['wandb']['tags'],
+                        notes=cfg['wandb']['notes']
+                    )
 
     def _set_seed(self, seed):
         torch.manual_seed(seed)
@@ -350,8 +369,8 @@ class KDRecipeSingleDevice:
                                 f"samples/step_{self.global_step}": samples_table,
                             })
 
-                    # Log training metrics to wandb
-                    if self.cfg.get('wandb', {}).get('enabled', False):
+                    # Log training metrics to wandb (only on main process)
+                    if self.cfg.get('wandb', {}).get('enabled', False) and (self.dist_info is None or self.dist_info['rank'] == 0):
                         wandb.log({
                             'train/loss': scaled_loss.item(),
                             'train/ntp_loss': scaled_ntp_loss.item(),
@@ -434,6 +453,7 @@ class KDRecipeSingleDevice:
             'eval_losses': self.eval_losses,
             'train_ppls': self.train_ppls,
             'eval_ppls': self.eval_ppls,
+            'wandb_run_id': wandb.run.id if self.cfg.get('wandb', {}).get('enabled', False) and (self.dist_info is None or self.dist_info['rank'] == 0) else None
         }
         if is_best:
             checkpoint_path = os.path.join(self.checkpoint_dir, "best_model.pt")
@@ -449,7 +469,7 @@ class KDRecipeSingleDevice:
 
     def load_checkpoint(self, checkpoint_path):
         if not os.path.exists(checkpoint_path):
-            raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
+            raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path)
         self.student_model.load_state_dict(checkpoint['student_model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -459,6 +479,13 @@ class KDRecipeSingleDevice:
         self.eval_losses = checkpoint.get('eval_losses', [])
         self.train_ppls = checkpoint.get('train_ppls', [])
         self.eval_ppls = checkpoint.get('eval_ppls', [])
+        
+        # Update wandb run ID in config if available
+        if 'wandb_run_id' in checkpoint and checkpoint['wandb_run_id']:
+            if 'wandb' not in self.cfg:
+                self.cfg['wandb'] = {}
+            self.cfg['wandb']['resume_id'] = checkpoint['wandb_run_id']
+        
         print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
 
     def __del__(self):
@@ -470,51 +497,69 @@ def main():
     warnings.filterwarnings("ignore", category=FutureWarning)
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, required=True, help='Path to config file')
-    parser.add_argument('--resume', type=str, help='Path to checkpoint to resume from')
-    args = parser.parse_args()
-
-    # Load config
-    with open(args.config, 'r') as f:
-        yaml_cfg = yaml.safe_load(f)
-    
-    # Convert nested yaml config to flat dictionary while preserving training section
-    cfg = {
-        'model_name': yaml_cfg['model']['name'],
-        'model': {  # Add model configuration
-            'student': {
-                'reduce_size': yaml_cfg['model'].get('student', {}).get('reduce_size', True),
-                'size_reduction_factor': yaml_cfg['model'].get('student', {}).get('size_reduction_factor', 2)
-            }
-        },
-        'data_path': yaml_cfg['data']['sources'][0]['path'],
-        'output_dir': yaml_cfg['output']['dir'],
-        'max_length': yaml_cfg['data']['max_length'],
-        'stride': yaml_cfg['data']['stride'],
-        'batch_size': yaml_cfg['data']['batch_size'],
-        'learning_rate': yaml_cfg['training']['learning_rate'],
-        'epochs': yaml_cfg['training']['epochs'],
-        'max_steps_per_epoch': yaml_cfg['training']['max_steps_per_epoch'],
-        'gradient_accumulation_steps': yaml_cfg['training']['gradient_accumulation_steps'],
-        'clip_grad_norm': yaml_cfg['training']['clip_grad_norm'],
-        'kd_ratio': yaml_cfg['training']['kd_ratio'],
-        'seed': yaml_cfg['training']['seed'],
-        'log_every_n_steps': yaml_cfg['training']['log_every_n_steps'],
-        'resume_from_checkpoint': args.resume if args.resume else yaml_cfg['checkpointing']['resume'],
-        'eval_every': yaml_cfg['training']['eval_every'],
-        'eval_steps': yaml_cfg['training']['eval_steps'],
-        'save_checkpoint_every': yaml_cfg['checkpointing']['save_every_n_epochs'],
-        'keep_n_checkpoints': yaml_cfg['checkpointing']['keep_n_checkpoints'],
-        'log_peak_memory_stats': True,
-        'training': yaml_cfg['training'],  # Preserve entire training section
-        'wandb': yaml_cfg['wandb']
-    }
-
-    recipe = KDRecipeSingleDevice(cfg)
-    recipe.setup()
-    
     try:
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--config', type=str, required=True, help='Path to config file')
+        parser.add_argument('--resume', type=str, help='Path to checkpoint to resume from')
+        parser.add_argument('--local_rank', type=int, default=0, help='Local rank for distributed training')
+        args = parser.parse_args()
+
+        # Print all environment variables at the start
+        print("Environment variables:")
+        for key, value in os.environ.items():
+            if any(x in key.lower() for x in ['cuda', 'nccl', 'rank', 'world', 'master', 'local']):
+                print(f"{key}: {value}")
+
+        # Load config
+        with open(args.config, 'r') as f:
+            yaml_cfg = yaml.safe_load(f)
+        
+        # Add local_rank to config
+        if 'training' not in yaml_cfg:
+            yaml_cfg['training'] = {}
+        if 'distributed' not in yaml_cfg['training']:
+            yaml_cfg['training']['distributed'] = {}
+        yaml_cfg['training']['distributed']['local_rank'] = args.local_rank
+        
+        # Convert nested yaml config to flat dictionary
+        cfg = {
+            'model_name': yaml_cfg['model']['name'],
+            'model': {
+                'student': {
+                    'reduce_size': yaml_cfg['model'].get('student', {}).get('reduce_size', True),
+                    'size_reduction_factor': yaml_cfg['model'].get('student', {}).get('size_reduction_factor', 2)
+                }
+            },
+            'data_path': yaml_cfg['data']['sources'][0]['path'],
+            'output_dir': yaml_cfg['output']['dir'],
+            'max_length': yaml_cfg['data']['max_length'],
+            'stride': yaml_cfg['data']['stride'],
+            'batch_size': yaml_cfg['data']['batch_size'],
+            'learning_rate': yaml_cfg['training']['learning_rate'],
+            'epochs': yaml_cfg['training']['epochs'],
+            'max_steps_per_epoch': yaml_cfg['training']['max_steps_per_epoch'],
+            'gradient_accumulation_steps': yaml_cfg['training']['gradient_accumulation_steps'],
+            'clip_grad_norm': yaml_cfg['training']['clip_grad_norm'],
+            'kd_ratio': yaml_cfg['training']['kd_ratio'],
+            'seed': yaml_cfg['training']['seed'],
+            'log_every_n_steps': yaml_cfg['training']['log_every_n_steps'],
+            'resume_from_checkpoint': args.resume if args.resume else yaml_cfg['checkpointing']['resume'],
+            'eval_every': yaml_cfg['training']['eval_every'],
+            'eval_steps': yaml_cfg['training']['eval_steps'],
+            'save_checkpoint_every': yaml_cfg['checkpointing']['save_every_n_epochs'],
+            'keep_n_checkpoints': yaml_cfg['checkpointing']['keep_n_checkpoints'],
+            'log_peak_memory_stats': True,
+            'training': yaml_cfg['training'],
+            'wandb': yaml_cfg['wandb']
+        }
+
+        print(f"Local rank: {args.local_rank}")
+        print(f"Device count: {torch.cuda.device_count()}")
+        print(f"CUDA available: {torch.cuda.is_available()}")
+
+        recipe = KDRecipeSingleDevice(cfg)
+        recipe.setup()
+        
         if cfg['resume_from_checkpoint']:
             checkpoint_path = cfg['resume_from_checkpoint']
             if not os.path.exists(checkpoint_path):
@@ -523,8 +568,12 @@ def main():
             recipe.load_checkpoint(checkpoint_path)
 
         recipe.train()
+    except Exception as e:
+        print(f"Error in main: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise
     finally:
-        # Clean up distributed process group
         cleanup_distributed()
 
 if __name__ == "__main__":
