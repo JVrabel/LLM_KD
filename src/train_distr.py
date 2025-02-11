@@ -18,7 +18,6 @@ import yaml
 import argparse
 import wandb  # Add wandb import
 from model_builder import ModelBuilder
-from distributed_utils import setup_distributed, cleanup_distributed
 
 #############################################
 # KDRecipeSingleDevice: Knowledge Distillation Recipe
@@ -26,25 +25,17 @@ from distributed_utils import setup_distributed, cleanup_distributed
 class KDRecipeSingleDevice:
     def __init__(self, cfg):
         self.cfg = cfg
-        # Get distributed info first
-        self.dist_info, self.local_rank = setup_distributed(cfg)
-        
-        # Set device based on local_rank if distributed
-        if self.dist_info is not None:
-            self.device = torch.device(f"cuda:{self.local_rank}")
-        else:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
         
-        # Initialize model builder with dist_info
-        self.model_builder = ModelBuilder(cfg, self.dist_info)
+        # Initialize model builder
+        self.model_builder = ModelBuilder(cfg)
         self.tokenizer = None
         self.student_model = None
         self.teacher_model = None
         
         self.output_dir = cfg['output_dir']
-        os.makedirs(self.output_dir, exist_ok=True)  # Create output directory if needed
+        os.makedirs(self.output_dir, exist_ok=True)
         self.log_every_n_steps = cfg.get("log_every_n_steps", 1)
         self.log_peak_memory_stats = cfg.get("log_peak_memory_stats", False)
         
@@ -82,34 +73,30 @@ class KDRecipeSingleDevice:
         self.keep_n_checkpoints = cfg.get('keep_n_checkpoints', 3)
         self.best_val_loss = float('inf')
 
-        # Initialize wandb if enabled (only on main process)
+        # Initialize wandb if enabled
         if cfg.get('wandb', {}).get('enabled', False):
-            # Only initialize wandb on the main process (rank 0)
-            if self.dist_info is None or self.dist_info['rank'] == 0:
-                if cfg['resume_from_checkpoint']:
-                    # Resume wandb run if resuming from checkpoint
-                    wandb_run_path = cfg['wandb'].get('resume_id')
-                    if not wandb_run_path:
-                        print("Warning: Resuming training but no wandb run_path provided. Creating new run.")
-                    
-                    wandb.init(
-                        project=cfg['wandb']['project'],
-                        name=cfg['wandb']['name'],
-                        id=wandb_run_path,  # Will resume run if ID exists
-                        resume="allow",
-                        config=cfg,
-                        tags=cfg['wandb']['tags'],
-                        notes=cfg['wandb']['notes']
-                    )
-                else:
-                    # Create new wandb run
-                    wandb.init(
-                        project=cfg['wandb']['project'],
-                        name=cfg['wandb']['name'] or f"run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                        config=cfg,
-                        tags=cfg['wandb']['tags'],
-                        notes=cfg['wandb']['notes']
-                    )
+            if cfg['resume_from_checkpoint']:
+                wandb_run_path = cfg['wandb'].get('resume_id')
+                if not wandb_run_path:
+                    print("Warning: Resuming training but no wandb run_path provided. Creating new run.")
+                
+                wandb.init(
+                    project=cfg['wandb']['project'],
+                    name=cfg['wandb']['name'],
+                    id=wandb_run_path,
+                    resume="allow",
+                    config=cfg,
+                    tags=cfg['wandb']['tags'],
+                    notes=cfg['wandb']['notes']
+                )
+            else:
+                wandb.init(
+                    project=cfg['wandb']['project'],
+                    name=cfg['wandb']['name'] or f"run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    config=cfg,
+                    tags=cfg['wandb']['tags'],
+                    notes=cfg['wandb']['notes']
+                )
 
     def _set_seed(self, seed):
         torch.manual_seed(seed)
@@ -153,31 +140,36 @@ class KDRecipeSingleDevice:
         with torch.no_grad():
             teacher_outputs = self.teacher_model(
                 input_ids=batch['input_ids'],
-                attention_mask=batch['attention_mask']
+                attention_mask=batch['attention_mask'],
+                labels=batch['labels']
             )
             teacher_logits = teacher_outputs.logits[..., :-1, :].contiguous()
         
         student_outputs = self.student_model(
             input_ids=batch['input_ids'],
-            attention_mask=batch['attention_mask']
+            attention_mask=batch['attention_mask'],
+            labels=batch['labels']
         )
         student_logits = student_outputs.logits[..., :-1, :].contiguous()
         
-        # No need to shift again
-        labels = batch['input_ids'][..., 1:].contiguous()
+        # Get labels and shift them right
+        labels = batch['labels'][..., 1:].contiguous()
         
+        # Calculate NTP loss (next token prediction)
         ntp_loss = self.ntp_loss_fn(
             student_logits.view(-1, student_logits.size(-1)),
             labels.view(-1)
         )
         
+        # Calculate KD loss (knowledge distillation)
         kd_loss = self.kd_loss_fn(
             student_logits.view(-1, student_logits.size(-1)),
             teacher_logits.view(-1, teacher_logits.size(-1)),
             labels.view(-1)
         )
 
-        loss = kd_loss
+        # Combine losses using kd_ratio
+        loss = self.kd_ratio * kd_loss + (1 - self.kd_ratio) * ntp_loss
         return loss, ntp_loss, kd_loss
 
     def evaluate(self, dataloader, steps=None, desc="Validating"):
@@ -289,10 +281,6 @@ class KDRecipeSingleDevice:
 
     def train(self):
         for epoch in range(self.epochs_run, self.total_epochs):
-            # Set epoch for distributed sampler
-            if self.dist_info is not None:
-                self.train_loader.sampler.set_epoch(epoch)
-            
             self.student_model.train()
             total_loss = 0
             total_ntp_loss = 0
@@ -377,8 +365,8 @@ class KDRecipeSingleDevice:
                                 f"samples/step_{self.global_step}": samples_table,
                             })
 
-                    # Log training metrics to wandb (only on main process)
-                    if self.cfg.get('wandb', {}).get('enabled', False) and (self.dist_info is None or self.dist_info['rank'] == 0):
+                    # Log training metrics to wandb
+                    if self.cfg.get('wandb', {}).get('enabled', False):
                         wandb.log({
                             'train/loss': scaled_loss.item(),
                             'train/ntp_loss': scaled_ntp_loss.item(),
@@ -461,7 +449,7 @@ class KDRecipeSingleDevice:
             'eval_losses': self.eval_losses,
             'train_ppls': self.train_ppls,
             'eval_ppls': self.eval_ppls,
-            'wandb_run_id': wandb.run.id if self.cfg.get('wandb', {}).get('enabled', False) and (self.dist_info is None or self.dist_info['rank'] == 0) else None
+            'wandb_run_id': wandb.run.id if self.cfg.get('wandb', {}).get('enabled', False) else None
         }
         if is_best:
             checkpoint_path = os.path.join(self.checkpoint_dir, "best_model.pt")
@@ -509,7 +497,6 @@ def main():
         parser = argparse.ArgumentParser()
         parser.add_argument('--config', type=str, required=True, help='Path to config file')
         parser.add_argument('--resume', type=str, help='Path to checkpoint to resume from')
-        parser.add_argument('--local_rank', type=int, default=0, help='Local rank for distributed training')
         args = parser.parse_args()
 
         # Print all environment variables at the start
@@ -521,13 +508,6 @@ def main():
         # Load config
         with open(args.config, 'r') as f:
             yaml_cfg = yaml.safe_load(f)
-        
-        # Add local_rank to config
-        if 'training' not in yaml_cfg:
-            yaml_cfg['training'] = {}
-        if 'distributed' not in yaml_cfg['training']:
-            yaml_cfg['training']['distributed'] = {}
-        yaml_cfg['training']['distributed']['local_rank'] = args.local_rank
         
         # Convert nested yaml config to flat dictionary
         cfg = {
@@ -561,8 +541,6 @@ def main():
             'wandb': yaml_cfg['wandb']
         }
 
-        print(f"Local rank: {args.local_rank}")
-        print(f"Device count: {torch.cuda.device_count()}")
         print(f"CUDA available: {torch.cuda.is_available()}")
 
         recipe = KDRecipeSingleDevice(cfg)
@@ -581,8 +559,6 @@ def main():
         import traceback
         traceback.print_exc()
         raise
-    finally:
-        cleanup_distributed()
 
 if __name__ == "__main__":
     main()

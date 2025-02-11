@@ -1,9 +1,8 @@
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split, DistributedSampler
+from torch.utils.data import Dataset, DataLoader, random_split
 import json
 import os
 from tqdm import tqdm
-from distributed_utils import is_distributed
 
 class SlidingWindowDataset(Dataset):
     def __init__(self, file_path, tokenizer, max_length, stride):
@@ -11,13 +10,20 @@ class SlidingWindowDataset(Dataset):
         self.max_length = max_length
         self.stride = stride
         # Create a cache file name based on the input file, max_length, and stride
-        cache_name = os.path.basename(file_path) + f".cache_{max_length}_{stride}.pt"
+        cache_name = os.path.basename(file_path) + f".cache_{max_length}_{stride}_v2.pt"
         self.cache_file = os.path.join(os.path.dirname(file_path), cache_name)
         
         if os.path.exists(self.cache_file):
             print(f"Loading cached dataset from {self.cache_file}")
             self.examples = torch.load(self.cache_file)
         else:
+            # Delete old cache file if it exists
+            old_cache = os.path.join(os.path.dirname(file_path), 
+                                   os.path.basename(file_path) + f".cache_{max_length}_{stride}.pt")
+            if os.path.exists(old_cache):
+                print(f"Removing old cache file: {old_cache}")
+                os.remove(old_cache)
+            
             self.examples = self.load_and_preprocess(file_path)
             print(f"Caching dataset to {self.cache_file}")
             torch.save(self.examples, self.cache_file)
@@ -56,11 +62,17 @@ class SlidingWindowDataset(Dataset):
                 padding='max_length',
                 return_tensors='pt'
             )
+            
             for i in range(len(tokenized['input_ids'])):
+                input_ids = tokenized['input_ids'][i]
+                attention_mask = tokenized['attention_mask'][i]
+                # For causal language modeling, labels are the same as input_ids
                 examples.append({
-                    'input_ids': tokenized['input_ids'][i],
-                    'attention_mask': tokenized['attention_mask'][i]
+                    'input_ids': input_ids,
+                    'attention_mask': attention_mask,
+                    'labels': input_ids.clone()  # Clone to avoid sharing memory
                 })
+                
         print(f"Created {len(examples)} examples with sliding window.")
         return examples
 
@@ -68,16 +80,22 @@ class SlidingWindowDataset(Dataset):
         return len(self.examples)
 
     def __getitem__(self, idx):
+        # Use clone().detach() to avoid the warning about tensor construction
         return {
-            'input_ids': torch.tensor(self.examples[idx]['input_ids'], dtype=torch.long),
-            'attention_mask': torch.tensor(self.examples[idx]['attention_mask'], dtype=torch.long),
-            'labels': torch.tensor(self.examples[idx]['labels'], dtype=torch.long)
+            'input_ids': self.examples[idx]['input_ids'].clone().detach(),
+            'attention_mask': self.examples[idx]['attention_mask'].clone().detach(),
+            'labels': self.examples[idx]['labels'].clone().detach()
         }
 
 def collate_fn(batch):
     input_ids = torch.stack([item['input_ids'] for item in batch])
     attention_mask = torch.stack([item['attention_mask'] for item in batch])
-    return {'input_ids': input_ids, 'attention_mask': attention_mask}
+    labels = torch.stack([item['labels'] for item in batch])
+    return {
+        'input_ids': input_ids, 
+        'attention_mask': attention_mask,
+        'labels': labels
+    }
 
 def setup_dataloaders(cfg, tokenizer):
     dataset = SlidingWindowDataset(
@@ -96,15 +114,10 @@ def setup_dataloaders(cfg, tokenizer):
     generator = torch.Generator().manual_seed(cfg['seed'])
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
     
-    # Setup samplers for distributed training
-    train_sampler = DistributedSampler(train_dataset) if is_distributed(cfg) else None
-    val_sampler = DistributedSampler(val_dataset, shuffle=False) if is_distributed(cfg) else None
-    
     train_loader = DataLoader(
         train_dataset,
         batch_size=cfg['batch_size'],
-        shuffle=(train_sampler is None),
-        sampler=train_sampler,
+        shuffle=True,
         num_workers=4,
         pin_memory=True,
         collate_fn=collate_fn
@@ -114,7 +127,6 @@ def setup_dataloaders(cfg, tokenizer):
         val_dataset,
         batch_size=cfg['batch_size'],
         shuffle=False,
-        sampler=val_sampler,
         num_workers=4,
         pin_memory=True,
         collate_fn=collate_fn

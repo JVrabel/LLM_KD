@@ -3,24 +3,18 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import (AutoTokenizer, AutoModelForCausalLM, AutoConfig, 
                         BitsAndBytesConfig, LlamaConfig, LlamaForCausalLM)
 import torch.nn.functional as F
-from distributed_utils import is_distributed
 
 class ModelBuilder:
-    def __init__(self, cfg, dist_info=None):
+    def __init__(self, cfg):
         self.cfg = cfg
-        self.dist_info = dist_info
-        self.device = f'cuda:{dist_info["local_rank"]}' if dist_info else ('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
         self.tokenizer = None
         self.student_model = None
         self.teacher_model = None
 
-    def setup(self, dist_info=None):
+    def setup(self):
         """Setup all model components"""
-        # Update dist_info if provided
-        if dist_info is not None:
-            self.dist_info = dist_info
-            
         self.tokenizer = self._setup_tokenizer()
         self.student_model = self._setup_student_model()
         self.teacher_model = self._setup_teacher_model()
@@ -45,10 +39,6 @@ class ModelBuilder:
             print("Student model using same architecture as teacher.")
             
         model = LlamaForCausalLM(config).to(self.device)
-        
-        if is_distributed(self.cfg):
-            model = DDP(model, device_ids=[self.dist_info['local_rank']])
-            
         return model
 
     def _setup_teacher_model(self):
