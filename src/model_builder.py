@@ -9,7 +9,7 @@ class ModelBuilder:
     def __init__(self, cfg, dist_info=None):
         self.cfg = cfg
         self.dist_info = dist_info
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = f'cuda:{dist_info["local_rank"]}' if dist_info else ('cuda' if torch.cuda.is_available() else 'cpu')
         self.dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
         self.tokenizer = None
         self.student_model = None

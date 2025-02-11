@@ -68,15 +68,18 @@ class SlidingWindowDataset(Dataset):
         return len(self.examples)
 
     def __getitem__(self, idx):
-        return self.examples[idx]
+        return {
+            'input_ids': torch.tensor(self.examples[idx]['input_ids'], dtype=torch.long),
+            'attention_mask': torch.tensor(self.examples[idx]['attention_mask'], dtype=torch.long),
+            'labels': torch.tensor(self.examples[idx]['labels'], dtype=torch.long)
+        }
 
 def collate_fn(batch):
     input_ids = torch.stack([item['input_ids'] for item in batch])
     attention_mask = torch.stack([item['attention_mask'] for item in batch])
     return {'input_ids': input_ids, 'attention_mask': attention_mask}
 
-def setup_dataloaders(cfg, tokenizer, dist_info=None):
-    """Create dataloaders for single or multi-GPU training"""
+def setup_dataloaders(cfg, tokenizer):
     dataset = SlidingWindowDataset(
         cfg['data_path'], 
         tokenizer, 
@@ -89,40 +92,32 @@ def setup_dataloaders(cfg, tokenizer, dist_info=None):
     train_size = int(0.9 * total)
     val_size = total - train_size
     
-    train_dataset, val_dataset = random_split(
-        dataset, 
-        [train_size, val_size],
-        generator=torch.Generator().manual_seed(cfg['seed'])
-    )
-    
-    print(f"Dataset split: {train_size} train, {val_size} val examples.")
+    # Use a fixed seed for reproducibility
+    generator = torch.Generator().manual_seed(cfg['seed'])
+    train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
     
     # Setup samplers for distributed training
-    if is_distributed(cfg):
-        train_sampler = DistributedSampler(train_dataset)
-        val_sampler = DistributedSampler(val_dataset, shuffle=False)
-        shuffle = False  # Sampler handles shuffling
-    else:
-        train_sampler = None
-        val_sampler = None
-        shuffle = True
+    train_sampler = DistributedSampler(train_dataset) if is_distributed(cfg) else None
+    val_sampler = DistributedSampler(val_dataset, shuffle=False) if is_distributed(cfg) else None
     
     train_loader = DataLoader(
-        train_dataset, 
-        batch_size=cfg['batch_size'], 
-        shuffle=shuffle,
+        train_dataset,
+        batch_size=cfg['batch_size'],
+        shuffle=(train_sampler is None),
         sampler=train_sampler,
-        collate_fn=collate_fn,
-        num_workers=4
+        num_workers=4,
+        pin_memory=True,
+        collate_fn=collate_fn
     )
     
     val_loader = DataLoader(
-        val_dataset, 
-        batch_size=cfg['batch_size'], 
+        val_dataset,
+        batch_size=cfg['batch_size'],
         shuffle=False,
         sampler=val_sampler,
-        collate_fn=collate_fn,
-        num_workers=4
+        num_workers=4,
+        pin_memory=True,
+        collate_fn=collate_fn
     )
     
     return train_loader, val_loader

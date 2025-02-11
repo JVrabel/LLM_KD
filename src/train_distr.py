@@ -147,20 +147,24 @@ class KDRecipeSingleDevice:
         )
 
     def _loss_step(self, batch):
-        input_ids = batch['input_ids'].to(self.device)
-        attention_mask = batch['attention_mask'].to(self.device)
-
+        # Move batch to correct device
+        batch = {k: v.to(self.device) for k, v in batch.items()}
+        
         with torch.no_grad():
-            teacher_outputs = self.teacher_model(input_ids=input_ids, attention_mask=attention_mask)
-            teacher_logits = teacher_outputs.logits[..., :-1, :].contiguous().detach()
-            del teacher_outputs
-
-        student_outputs = self.student_model(input_ids=input_ids, attention_mask=attention_mask)
+            teacher_outputs = self.teacher_model(
+                input_ids=batch['input_ids'],
+                attention_mask=batch['attention_mask']
+            )
+            teacher_logits = teacher_outputs.logits[..., :-1, :].contiguous()
+        
+        student_outputs = self.student_model(
+            input_ids=batch['input_ids'],
+            attention_mask=batch['attention_mask']
+        )
         student_logits = student_outputs.logits[..., :-1, :].contiguous()
-        del student_outputs
-
+        
         # No need to shift again
-        labels = input_ids[..., 1:].contiguous()
+        labels = batch['input_ids'][..., 1:].contiguous()
         
         ntp_loss = self.ntp_loss_fn(
             student_logits.view(-1, student_logits.size(-1)),
@@ -285,6 +289,10 @@ class KDRecipeSingleDevice:
 
     def train(self):
         for epoch in range(self.epochs_run, self.total_epochs):
+            # Set epoch for distributed sampler
+            if self.dist_info is not None:
+                self.train_loader.sampler.set_epoch(epoch)
+            
             self.student_model.train()
             total_loss = 0
             total_ntp_loss = 0
