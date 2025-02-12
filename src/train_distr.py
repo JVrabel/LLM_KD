@@ -19,17 +19,35 @@ import argparse
 import wandb  # Add wandb import
 from model_builder import ModelBuilder
 
+import torch.multiprocessing as mp
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.distributed import init_process_group, destroy_process_group
+
+
+
+def ddp_setup(rank, world_size): 
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
+    init_process_group(backend="nccl", rank=rank, world_size=world_size)
+
+
+def ddp_cleanup():
+    destroy_process_group()
+
 #############################################
-# KDRecipeSingleDevice: Knowledge Distillation Recipe
+# KDRecipe: Knowledge Distillation Recipe
 #############################################
-class KDRecipeSingleDevice:
-    def __init__(self, cfg):
+class KDRecipe:
+    def __init__(self, cfg, rank=None, world_size=None):
         self.cfg = cfg
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.rank = rank
+        self.world_size = world_size
+        self.device = f'cuda:{rank}' if rank is not None else ('cuda' if torch.cuda.is_available() else 'cpu')
         self.dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
         
-        # Initialize model builder
-        self.model_builder = ModelBuilder(cfg)
+        # Initialize model builder with rank
+        self.model_builder = ModelBuilder(cfg, rank=rank)
         self.tokenizer = None
         self.student_model = None
         self.teacher_model = None
@@ -73,8 +91,8 @@ class KDRecipeSingleDevice:
         self.keep_n_checkpoints = cfg.get('keep_n_checkpoints', 3)
         self.best_val_loss = float('inf')
 
-        # Initialize wandb if enabled
-        if cfg.get('wandb', {}).get('enabled', False):
+        # Initialize wandb only on main process
+        if cfg.get('wandb', {}).get('enabled', False) and (rank is None or rank == 0):
             if cfg['resume_from_checkpoint']:
                 wandb_run_path = cfg['wandb'].get('resume_id')
                 if not wandb_run_path:
@@ -105,15 +123,17 @@ class KDRecipeSingleDevice:
         return seed
 
     def setup(self):
-        # Get models from builder (no need to pass dist_info again)
+        # Get models from builder (which now handles DDP wrapping)
         self.tokenizer, self.student_model, self.teacher_model = self.model_builder.setup()
         
         # Get loss functions
         self.ntp_loss_fn, self.kd_loss_fn = self.model_builder.get_loss_functions()
         
-        # Setup optimizer and data
+        # Setup optimizer after DDP wrapping
         self.optimizer = torch.optim.AdamW(self.student_model.parameters(), lr=self.cfg['learning_rate'])
-        self.train_loader, self.val_loader, _ = self._setup_data()
+        
+        # Setup data with DistributedSampler if using DDP
+        self.train_loader, self.val_loader = self._setup_data()
 
         self.steps_per_epoch = len(self.train_loader) // self.gradient_accumulation_steps
         if self.max_steps_per_epoch is not None and self.max_steps_per_epoch < self.steps_per_epoch:
@@ -123,8 +143,18 @@ class KDRecipeSingleDevice:
         self.scaler = torch.cuda.amp.GradScaler()
 
     def _setup_data(self):
-        train_loader, val_loader = setup_dataloaders(self.cfg, self.tokenizer)
-        return train_loader, val_loader, None
+        if self.rank is not None:
+            # Using DDP, create DistributedSampler
+            train_loader, val_loader = setup_dataloaders(
+                self.cfg, 
+                self.tokenizer,
+                rank=self.rank,
+                world_size=self.world_size
+            )
+        else:
+            # Single GPU setup
+            train_loader, val_loader = setup_dataloaders(self.cfg, self.tokenizer)
+        return train_loader, val_loader
 
     def _setup_lr_scheduler(self):
         return get_linear_schedule_with_warmup(
@@ -281,6 +311,10 @@ class KDRecipeSingleDevice:
 
     def train(self):
         for epoch in range(self.epochs_run, self.total_epochs):
+            # Set epoch for distributed sampler
+            if isinstance(self.train_loader.sampler, DistributedSampler):
+                self.train_loader.sampler.set_epoch(epoch)
+            
             self.student_model.train()
             total_loss = 0
             total_ntp_loss = 0
@@ -438,9 +472,16 @@ class KDRecipeSingleDevice:
         print(f"Saved samples to {samples_file}")
 
     def save_checkpoint(self, epoch, train_loss, val_loss, is_best=False):
+        # Only save checkpoint from rank 0 process
+        if self.rank is not None and self.rank != 0:
+            return
+
         checkpoint = {
             'epoch': epoch,
-            'student_model_state_dict': self.student_model.state_dict(),
+            # Use .module to get the underlying model if using DDP
+            'student_model_state_dict': self.student_model.module.state_dict() 
+                if hasattr(self.student_model, 'module') 
+                else self.student_model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'lr_scheduler_state_dict': self.lr_scheduler.state_dict(),
             'train_loss': train_loss,
@@ -451,14 +492,19 @@ class KDRecipeSingleDevice:
             'eval_ppls': self.eval_ppls,
             'wandb_run_id': wandb.run.id if self.cfg.get('wandb', {}).get('enabled', False) else None
         }
+
         if is_best:
             checkpoint_path = os.path.join(self.checkpoint_dir, "best_model.pt")
         else:
             checkpoint_path = os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pt")
+        
         torch.save(checkpoint, checkpoint_path)
-        print(f"Saved checkpoint to {checkpoint_path}")
+        
+        if self.rank is None or self.rank == 0:  # Only print from main process
+            print(f"Saved checkpoint to {checkpoint_path}")
+        
         if not is_best:
-            # Keep only the N most recent checkpoints.
+            # Keep only the N most recent checkpoints
             checkpoints = sorted([f for f in os.listdir(self.checkpoint_dir) if f.startswith("checkpoint")])
             for old_checkpoint in checkpoints[:-self.keep_n_checkpoints]:
                 os.remove(os.path.join(self.checkpoint_dir, old_checkpoint))
@@ -466,8 +512,16 @@ class KDRecipeSingleDevice:
     def load_checkpoint(self, checkpoint_path):
         if not os.path.exists(checkpoint_path):
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-        checkpoint = torch.load(checkpoint_path)
-        self.student_model.load_state_dict(checkpoint['student_model_state_dict'])
+            
+        # Load checkpoint to CPU first to avoid GPU RAM issues
+        checkpoint = torch.load(checkpoint_path, map_location='cpu')
+        
+        # Load state dict into model (handle DDP case)
+        if hasattr(self.student_model, 'module'):
+            self.student_model.module.load_state_dict(checkpoint['student_model_state_dict'])
+        else:
+            self.student_model.load_state_dict(checkpoint['student_model_state_dict'])
+            
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
         self.epochs_run = checkpoint['epoch'] + 1
@@ -482,16 +536,21 @@ class KDRecipeSingleDevice:
                 self.cfg['wandb'] = {}
             self.cfg['wandb']['resume_id'] = checkpoint['wandb_run_id']
         
-        print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
+        if self.rank is None or self.rank == 0:  # Only print from main process
+            print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
 
     def __del__(self):
         # Cleanup wandb
         if self.cfg.get('wandb', {}).get('enabled', False):
             wandb.finish()
 
-def main():
+def main(rank=None, world_size=None):
     warnings.filterwarnings("ignore", category=FutureWarning)
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+    if rank is not None:
+        # Initialize DDP
+        ddp_setup(rank, world_size)
 
     try:
         parser = argparse.ArgumentParser()
@@ -543,7 +602,7 @@ def main():
 
         print(f"CUDA available: {torch.cuda.is_available()}")
 
-        recipe = KDRecipeSingleDevice(cfg)
+        recipe = KDRecipe(cfg, rank=rank, world_size=world_size)
         recipe.setup()
         
         if cfg['resume_from_checkpoint']:
@@ -559,6 +618,19 @@ def main():
         import traceback
         traceback.print_exc()
         raise
+    finally:
+        if rank is not None:
+            ddp_cleanup()
 
 if __name__ == "__main__":
-    main()
+    # Check if using multiple GPUs
+    n_gpus = torch.cuda.device_count()
+    if n_gpus > 1:
+        mp.spawn(
+            main,
+            args=(n_gpus,),
+            nprocs=n_gpus,
+            join=True
+        )
+    else:
+        main()  # Run without DDP

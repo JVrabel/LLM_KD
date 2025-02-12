@@ -5,9 +5,11 @@ from transformers import (AutoTokenizer, AutoModelForCausalLM, AutoConfig,
 import torch.nn.functional as F
 
 class ModelBuilder:
-    def __init__(self, cfg):
+    def __init__(self, cfg, rank=None):
         self.cfg = cfg
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.rank = rank
+        # If rank is provided, use specific GPU, otherwise use cuda
+        self.device = f'cuda:{rank}' if rank is not None else ('cuda' if torch.cuda.is_available() else 'cpu')
         self.dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
         self.tokenizer = None
         self.student_model = None
@@ -29,7 +31,6 @@ class ModelBuilder:
         """Create student model with configurable size"""
         config = LlamaConfig.from_pretrained(self.cfg['model_name'])
         
-        # Reduce size only if specified in config
         if self.cfg.get('model', {}).get('student', {}).get('reduce_size', False):
             reduction_factor = self.cfg.get('model', {}).get('student', {}).get('size_reduction_factor', 2)
             config.num_hidden_layers = max(1, config.num_hidden_layers // reduction_factor)
@@ -39,6 +40,11 @@ class ModelBuilder:
             print("Student model using same architecture as teacher.")
             
         model = LlamaForCausalLM(config).to(self.device)
+        
+        # Wrap model in DDP if rank is provided
+        if self.rank is not None:
+            model = DDP(model, device_ids=[self.rank])
+            
         return model
 
     def _setup_teacher_model(self):

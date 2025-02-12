@@ -3,6 +3,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 import json
 import os
 from tqdm import tqdm
+from torch.utils.data.distributed import DistributedSampler
 
 class SlidingWindowDataset(Dataset):
     def __init__(self, file_path, tokenizer, max_length, stride):
@@ -97,7 +98,7 @@ def collate_fn(batch):
         'labels': labels
     }
 
-def setup_dataloaders(cfg, tokenizer):
+def setup_dataloaders(cfg, tokenizer, rank=None, world_size=None):
     dataset = SlidingWindowDataset(
         cfg['data_path'], 
         tokenizer, 
@@ -114,10 +115,28 @@ def setup_dataloaders(cfg, tokenizer):
     generator = torch.Generator().manual_seed(cfg['seed'])
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
     
+    # Create samplers for distributed training
+    train_sampler = DistributedSampler(
+        train_dataset,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=True,
+        seed=cfg['seed']
+    ) if rank is not None else None
+    
+    val_sampler = DistributedSampler(
+        val_dataset,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=False,
+        seed=cfg['seed']
+    ) if rank is not None else None
+    
     train_loader = DataLoader(
         train_dataset,
         batch_size=cfg['batch_size'],
-        shuffle=True,
+        shuffle=(train_sampler is None),  # Don't shuffle if using sampler
+        sampler=train_sampler,
         num_workers=4,
         pin_memory=True,
         collate_fn=collate_fn
@@ -127,6 +146,7 @@ def setup_dataloaders(cfg, tokenizer):
         val_dataset,
         batch_size=cfg['batch_size'],
         shuffle=False,
+        sampler=val_sampler,
         num_workers=4,
         pin_memory=True,
         collate_fn=collate_fn
