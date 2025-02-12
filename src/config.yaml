@@ -33,13 +33,13 @@ output:
 
 wandb:
   enabled: true
-  project: "llm_kd"
-  name: "distributed_training"
-  resume_id: null  # Set this to the run ID when resuming
-  tags: []
-  notes: ""
+  project: "llm-kd"
+  name: null
+  resume_id: null
+  tags: ["3B", "knowledge-distillation"]
+  notes: "Training 3B student with KD"
   log_every_n_steps: 10
-  generate_every_n_steps: 500  # Generate samples every 500 steps
+  generate_every_n_steps: 500
 
 
   #python src/modularize_phil_both_datasets.py --config config.yaml --resume runs/kd_experiment_3b/run_20240101_123456/checkpoints/best_model.pt

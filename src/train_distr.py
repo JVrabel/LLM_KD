@@ -75,24 +75,32 @@ class KDRecipeSingleDevice:
 
         # Initialize wandb if enabled
         if cfg.get('wandb', {}).get('enabled', False):
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             if cfg['resume_from_checkpoint']:
                 wandb_run_path = cfg['wandb'].get('resume_id')
-                if not wandb_run_path:
+                if wandb_run_path:
+                    # No username specified, uses login credentials
+                    wandb.init(
+                        project=cfg['wandb']['project'],
+                        id=wandb_run_path,
+                        resume="allow",
+                        config=cfg,
+                        tags=cfg['wandb']['tags'],
+                        notes=cfg['wandb']['notes']
+                    )
+                else:
                     print("Warning: Resuming training but no wandb run_path provided. Creating new run.")
-                
-                wandb.init(
-                    project=cfg['wandb']['project'],
-                    name=cfg['wandb']['name'],
-                    id=wandb_run_path,
-                    resume="allow",
-                    config=cfg,
-                    tags=cfg['wandb']['tags'],
-                    notes=cfg['wandb']['notes']
-                )
+                    wandb.init(
+                        project=cfg['wandb']['project'],
+                        name=f"{cfg['wandb']['name'] or 'run'}_{timestamp}",
+                        config=cfg,
+                        tags=cfg['wandb']['tags'],
+                        notes=cfg['wandb']['notes']
+                    )
             else:
                 wandb.init(
                     project=cfg['wandb']['project'],
-                    name=cfg['wandb']['name'] or f"run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    name=f"{cfg['wandb']['name'] or 'run'}_{timestamp}",
                     config=cfg,
                     tags=cfg['wandb']['tags'],
                     notes=cfg['wandb']['notes']
