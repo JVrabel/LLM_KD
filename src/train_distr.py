@@ -252,27 +252,38 @@ class KDRecipe:
         }
 
     def generate_samples(self, batch):
+        if self.rank is not None and self.rank != 0:
+            return None
+        
         input_ids = batch['input_ids'].to(self.device)
         attention_mask = batch['attention_mask'].to(self.device)
         
-        # Access the underlying model if using DDP
-        if hasattr(self.student_model, 'module'):
-            student_model = self.student_model.module
-        else:
-            student_model = self.student_model
-
-        student_output = student_model.generate(
-            input_ids=input_ids[:2],  # Generate from first 2 examples in batch
-            attention_mask=attention_mask[:2],
-            max_length=self.cfg['max_length'],
-            num_return_sequences=1,
-            pad_token_id=self.tokenizer.pad_token_id,
-            do_sample=True,
-            temperature=0.7,
-            top_p=0.9
-        )
+        # Get the base model (unwrap from DDP if needed)
+        student_model = self.student_model.module if isinstance(self.student_model, DDP) else self.student_model
         
-        self.teacher_model.eval()
+        with torch.no_grad():
+            student_output = student_model.generate(
+                input_ids=input_ids[:2],
+                attention_mask=attention_mask[:2],
+                max_new_tokens=50,  # Generate 50 new tokens instead of using max_length
+                num_return_sequences=1,
+                pad_token_id=self.tokenizer.pad_token_id,
+                do_sample=True,
+                temperature=0.7,
+                top_p=0.9
+            )
+            
+            teacher_output = self.teacher_model.generate(
+                input_ids=input_ids[:2],
+                attention_mask=attention_mask[:2],
+                max_new_tokens=50,  # Same for teacher model
+                num_return_sequences=1,
+                pad_token_id=self.tokenizer.pad_token_id,
+                do_sample=True,
+                temperature=0.7,
+                top_p=0.9
+            )
+        
         results = []
         
         with torch.no_grad():
