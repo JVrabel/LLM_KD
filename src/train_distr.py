@@ -252,7 +252,26 @@ class KDRecipe:
         }
 
     def generate_samples(self, batch):
-        self.student_model.eval()
+        input_ids = batch['input_ids'].to(self.device)
+        attention_mask = batch['attention_mask'].to(self.device)
+        
+        # Access the underlying model if using DDP
+        if hasattr(self.student_model, 'module'):
+            student_model = self.student_model.module
+        else:
+            student_model = self.student_model
+
+        student_output = student_model.generate(
+            input_ids=input_ids[:2],  # Generate from first 2 examples in batch
+            attention_mask=attention_mask[:2],
+            max_length=self.cfg['max_length'],
+            num_return_sequences=1,
+            pad_token_id=self.tokenizer.pad_token_id,
+            do_sample=True,
+            temperature=0.7,
+            top_p=0.9
+        )
+        
         self.teacher_model.eval()
         results = []
         
@@ -264,20 +283,6 @@ class KDRecipe:
                 prompt_length = min(100, input_ids.size(1))
                 prompt = input_ids[:, :prompt_length]
                 prompt_mask = attention_mask[:, :prompt_length]
-                
-                # Generate with student
-                student_output = self.student_model.generate(
-                    input_ids=prompt,
-                    attention_mask=prompt_mask,
-                    max_new_tokens=50,
-                    num_return_sequences=1,
-                    do_sample=True,
-                    top_k=50,
-                    top_p=0.95,
-                )
-                
-                # Clear cache after student generation
-                torch.cuda.empty_cache()
                 
                 # Generate with teacher
                 teacher_output = self.teacher_model.generate(
@@ -295,9 +300,9 @@ class KDRecipe:
                 
                 # Process outputs
                 prompt_text = self.tokenizer.decode(prompt[0], skip_special_tokens=True)
-                student_completion = self.tokenizer.decode(student_output[0][prompt_length:], skip_special_tokens=True)
+                student_completion = self.tokenizer.decode(student_output[i][prompt_length:], skip_special_tokens=True)
                 teacher_completion = self.tokenizer.decode(teacher_output[0][prompt_length:], skip_special_tokens=True)
-                ground_truth = self.tokenizer.decode(input_ids[0][prompt_length:], skip_special_tokens=True)
+                ground_truth = self.tokenizer.decode(input_ids[i][prompt_length:], skip_special_tokens=True)
                 
                 results.append({
                     "prompt": prompt_text,
