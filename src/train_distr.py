@@ -94,7 +94,8 @@ class KDRecipe:
         self.best_val_loss = float('inf')
 
         # Initialize wandb only on main process
-        if cfg.get('wandb', {}).get('enabled', False) and (rank is None or rank == 0):
+        self.use_wandb = cfg.get('wandb', {}).get('enabled', False) and (rank is None or rank == 0)
+        if self.use_wandb:
             if cfg['resume_from_checkpoint']:
                 wandb_run_path = cfg['wandb'].get('resume_id')
                 if not wandb_run_path:
@@ -370,7 +371,7 @@ class KDRecipe:
                         val_metrics = self.evaluate(self.val_loader, steps=self.eval_steps)
                         print(f"Validation loss: {val_metrics['loss']:.4f}, Perplexity: {val_metrics['perplexity']:.4f}")
                         
-                        if self.cfg.get('wandb', {}).get('enabled', False):
+                        if self.use_wandb:
                             wandb.log({
                                 'val/loss': val_metrics['loss'],
                                 'val/ntp_loss': val_metrics['ntp_loss'],
@@ -388,7 +389,7 @@ class KDRecipe:
                         self.save_samples(samples, epoch, self.global_step)
                         
                         # Log to wandb if enabled
-                        if self.cfg.get('wandb', {}).get('enabled', False):
+                        if self.use_wandb:
                             # Create a wandb.Table for the samples
                             samples_table = wandb.Table(
                                 columns=["step", "prompt", "student_completion", "teacher_completion", "ground_truth"],
@@ -402,7 +403,7 @@ class KDRecipe:
                             })
 
                     # Log training metrics to wandb
-                    if self.cfg.get('wandb', {}).get('enabled', False):
+                    if self.use_wandb:
                         wandb.log({
                             'train/loss': scaled_loss.item(),
                             'train/ntp_loss': scaled_ntp_loss.item(),
@@ -416,7 +417,7 @@ class KDRecipe:
             val_metrics = self.evaluate(self.val_loader)
             
             # Log metrics
-            if self.cfg.get('wandb', {}).get('enabled', False):
+            if self.use_wandb:
                 wandb.log({
                     'train/epoch_loss': total_loss / logged_steps,
                     'train/epoch_ntp_loss': total_ntp_loss / logged_steps,
@@ -492,7 +493,7 @@ class KDRecipe:
             'eval_losses': self.eval_losses,
             'train_ppls': self.train_ppls,
             'eval_ppls': self.eval_ppls,
-            'wandb_run_id': wandb.run.id if self.cfg.get('wandb', {}).get('enabled', False) else None
+            'wandb_run_id': wandb.run.id if self.use_wandb else None
         }
 
         if is_best:
@@ -543,7 +544,7 @@ class KDRecipe:
 
     def __del__(self):
         # Cleanup wandb
-        if self.cfg.get('wandb', {}).get('enabled', False):
+        if self.use_wandb:
             wandb.finish()
 
 def main(rank=None, world_size=None):
