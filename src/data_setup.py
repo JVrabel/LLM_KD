@@ -138,8 +138,9 @@ def setup_dataloaders(cfg, tokenizer, rank=None, world_size=None):
         shuffle=(train_sampler is None),  # Don't shuffle if using sampler
         sampler=train_sampler,
         num_workers=4,
-        pin_memory=False,
-        collate_fn=collate_fn
+        pin_memory=True,
+        collate_fn=collate_fn,
+        persistent_workers=True
     )
     
     val_loader = DataLoader(
@@ -148,8 +149,9 @@ def setup_dataloaders(cfg, tokenizer, rank=None, world_size=None):
         shuffle=False,
         sampler=val_sampler,
         num_workers=4,
-        pin_memory=False,
-        collate_fn=collate_fn
+        pin_memory=True,
+        collate_fn=collate_fn,
+        persistent_workers=True
     )
     
     return train_loader, val_loader
