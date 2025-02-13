@@ -55,11 +55,14 @@ class ModelBuilder:
             bnb_4bit_use_double_quant=True,
             bnb_4bit_quant_type="nf4"
         )
+        
+        # Place teacher model on the same device as the student model
+        device = f'cuda:{self.rank}' if self.rank is not None else 'cuda'
         model = AutoModelForCausalLM.from_pretrained(
             self.cfg['model_name'],
             quantization_config=quantization_config,
             torch_dtype=torch.float16,
-            device_map="auto"
+            device_map={"": device}  # Explicitly assign to specific GPU
         )
         model.eval()
         return model
