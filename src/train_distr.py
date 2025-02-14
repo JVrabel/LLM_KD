@@ -252,81 +252,69 @@ class KDRecipe:
         }
 
     def generate_samples(self, batch):
+        # Only generate samples on the main process (rank 0)
         if self.rank is not None and self.rank != 0:
             return None
         
-        input_ids = batch['input_ids'].to(self.device)
-        attention_mask = batch['attention_mask'].to(self.device)
-        
-        # Get the base model (unwrap from DDP if needed)
-        student_model = self.student_model.module if isinstance(self.student_model, DDP) else self.student_model
-        
-        with torch.no_grad():
-            student_output = student_model.generate(
-                input_ids=input_ids[:2],
-                attention_mask=attention_mask[:2],
-                max_new_tokens=50,  # Generate 50 new tokens instead of using max_length
-                num_return_sequences=1,
-                pad_token_id=self.tokenizer.pad_token_id,
-                do_sample=True,
-                temperature=0.7,
-                top_p=0.9
-            )
+        try:
+            input_ids = batch['input_ids'].to(self.device)[:2]  # Take only first 2 examples
+            attention_mask = batch['attention_mask'].to(self.device)[:2]
             
-            teacher_output = self.teacher_model.generate(
-                input_ids=input_ids[:2],
-                attention_mask=attention_mask[:2],
-                max_new_tokens=50,  # Same for teacher model
-                num_return_sequences=1,
-                pad_token_id=self.tokenizer.pad_token_id,
-                do_sample=True,
-                temperature=0.7,
-                top_p=0.9
-            )
-        
-        results = []
-        
-        with torch.no_grad():
-            for i in range(2):  # Generate for 2 examples
-                input_ids = batch['input_ids'][i].unsqueeze(0).to(self.device)
-                attention_mask = batch['attention_mask'][i].unsqueeze(0).to(self.device)
-                
-                prompt_length = min(100, input_ids.size(1))
-                prompt = input_ids[:, :prompt_length]
-                prompt_mask = attention_mask[:, :prompt_length]
-                
-                # Generate with teacher
-                teacher_output = self.teacher_model.generate(
-                    input_ids=prompt,
-                    attention_mask=prompt_mask,
-                    max_new_tokens=50,
+            # Get the base model if using DDP
+            student_model = self.student_model.module if isinstance(self.student_model, DDP) else self.student_model
+            
+            # Calculate prompt length (use the first non-padding token)
+            prompt_length = attention_mask[0].sum().item()
+            
+            with torch.no_grad():
+                # Generate from student model
+                student_output = student_model.generate(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    max_new_tokens=50,  # Generate 50 new tokens
                     num_return_sequences=1,
+                    pad_token_id=self.tokenizer.pad_token_id,
                     do_sample=True,
-                    top_k=50,
-                    top_p=0.95,
+                    temperature=0.7,
+                    top_p=0.9
                 )
                 
-                # Clear cache after teacher generation
-                torch.cuda.empty_cache()
+                # Generate from teacher model
+                teacher_output = self.teacher_model.generate(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    max_new_tokens=50,
+                    num_return_sequences=1,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                    do_sample=True,
+                    temperature=0.7,
+                    top_p=0.9
+                )
+            
+            samples = []
+            for i in range(len(input_ids)):
+                # Get the prompt text
+                prompt = self.tokenizer.decode(input_ids[i][:prompt_length], skip_special_tokens=True)
                 
-                # Process outputs
-                prompt_text = self.tokenizer.decode(prompt[0], skip_special_tokens=True)
+                # Get completions
                 student_completion = self.tokenizer.decode(student_output[i][prompt_length:], skip_special_tokens=True)
-                teacher_completion = self.tokenizer.decode(teacher_output[0][prompt_length:], skip_special_tokens=True)
+                teacher_completion = self.tokenizer.decode(teacher_output[i][prompt_length:], skip_special_tokens=True)
                 ground_truth = self.tokenizer.decode(input_ids[i][prompt_length:], skip_special_tokens=True)
                 
-                results.append({
-                    "prompt": prompt_text,
-                    "student_completion": student_completion,
-                    "teacher_completion": teacher_completion,
-                    "ground_truth": ground_truth
+                samples.append({
+                    'prompt': prompt,
+                    'student_completion': student_completion,
+                    'teacher_completion': teacher_completion,
+                    'ground_truth': ground_truth
                 })
-                
-                # Clean up tensors
-                del student_output, teacher_output, prompt, prompt_mask
-                torch.cuda.empty_cache()
-
-        return results
+            
+            return samples
+            
+        except Exception as e:
+            print(f"Error in generate_samples: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
 
     def train(self):
         for epoch in range(self.epochs_run, self.total_epochs):
