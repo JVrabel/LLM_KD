@@ -259,19 +259,20 @@ class KDRecipe:
         try:
             input_ids = batch['input_ids'].to(self.device)[:2]  # Take only first 2 examples
             attention_mask = batch['attention_mask'].to(self.device)[:2]
+            labels = batch['labels'].to(self.device)[:2]  # Make sure to get labels
             
             # Get the base model if using DDP
             student_model = self.student_model.module if isinstance(self.student_model, DDP) else self.student_model
             
-            # Calculate prompt length (use the first non-padding token)
-            prompt_length = attention_mask[0].sum().item()
+            # Find the first padding token to determine actual sequence length
+            # We'll use this as our prompt length
+            prompt_length = (attention_mask[0] == 1).sum().item()
             
             with torch.no_grad():
                 # Generate from student model
                 student_output = student_model.generate(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    max_new_tokens=50,  # Generate 50 new tokens
+                    input_ids=input_ids[:, :prompt_length],  # Use only the prompt part
+                    max_new_tokens=50,
                     num_return_sequences=1,
                     pad_token_id=self.tokenizer.pad_token_id,
                     do_sample=True,
@@ -281,8 +282,7 @@ class KDRecipe:
                 
                 # Generate from teacher model
                 teacher_output = self.teacher_model.generate(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
+                    input_ids=input_ids[:, :prompt_length],  # Use only the prompt part
                     max_new_tokens=50,
                     num_return_sequences=1,
                     pad_token_id=self.tokenizer.pad_token_id,
@@ -296,10 +296,21 @@ class KDRecipe:
                 # Get the prompt text
                 prompt = self.tokenizer.decode(input_ids[i][:prompt_length], skip_special_tokens=True)
                 
-                # Get completions
-                student_completion = self.tokenizer.decode(student_output[i][prompt_length:], skip_special_tokens=True)
-                teacher_completion = self.tokenizer.decode(teacher_output[i][prompt_length:], skip_special_tokens=True)
-                ground_truth = self.tokenizer.decode(input_ids[i][prompt_length:], skip_special_tokens=True)
+                # Get the actual continuation (ground truth) - use labels to avoid padding
+                ground_truth_ids = labels[i][prompt_length:]
+                # Remove padding tokens from ground truth
+                ground_truth_ids = ground_truth_ids[ground_truth_ids != self.tokenizer.pad_token_id]
+                ground_truth = self.tokenizer.decode(ground_truth_ids, skip_special_tokens=True)
+                
+                # Get model completions
+                student_completion = self.tokenizer.decode(
+                    student_output[i][prompt_length:], 
+                    skip_special_tokens=True
+                )
+                teacher_completion = self.tokenizer.decode(
+                    teacher_output[i][prompt_length:], 
+                    skip_special_tokens=True
+                )
                 
                 samples.append({
                     'prompt': prompt,
@@ -307,6 +318,14 @@ class KDRecipe:
                     'teacher_completion': teacher_completion,
                     'ground_truth': ground_truth
                 })
+                
+                # Print samples for debugging
+                if i == 0:  # Print first sample
+                    print("\nSample generation:")
+                    print(f"Prompt: {prompt[:100]}...")
+                    print(f"Ground Truth: {ground_truth[:100]}...")
+                    print(f"Student: {student_completion[:100]}...")
+                    print(f"Teacher: {teacher_completion[:100]}...")
             
             return samples
             
