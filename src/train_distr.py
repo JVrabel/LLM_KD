@@ -252,21 +252,18 @@ class KDRecipe:
         }
 
     def generate_samples(self, batch):
-        # Only generate samples on the main process (rank 0)
         if self.rank is not None and self.rank != 0:
             return None
         
         try:
             input_ids = batch['input_ids'].to(self.device)[:2]  # Take only first 2 examples
             attention_mask = batch['attention_mask'].to(self.device)[:2]
-            labels = batch['labels'].to(self.device)[:2]  # Make sure to get labels
             
             # Get the base model if using DDP
             student_model = self.student_model.module if isinstance(self.student_model, DDP) else self.student_model
             
-            # Find the first padding token to determine actual sequence length
-            # We'll use this as our prompt length
-            prompt_length = (attention_mask[0] == 1).sum().item()
+            # Calculate prompt length (use the first non-padding token)
+            prompt_length = attention_mask[0].sum().item() // 2  # Use half of the input as prompt
             
             with torch.no_grad():
                 # Generate from student model
@@ -296,8 +293,8 @@ class KDRecipe:
                 # Get the prompt text
                 prompt = self.tokenizer.decode(input_ids[i][:prompt_length], skip_special_tokens=True)
                 
-                # Get the actual continuation (ground truth) - use labels to avoid padding
-                ground_truth_ids = labels[i][prompt_length:]
+                # Get the actual continuation (ground truth) from the input_ids
+                ground_truth_ids = input_ids[i][prompt_length:]
                 # Remove padding tokens from ground truth
                 ground_truth_ids = ground_truth_ids[ground_truth_ids != self.tokenizer.pad_token_id]
                 ground_truth = self.tokenizer.decode(ground_truth_ids, skip_special_tokens=True)
