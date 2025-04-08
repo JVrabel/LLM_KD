@@ -2,15 +2,14 @@ model:
   name: "meta-llama/Llama-3.2-1b"
   student:
     reduce_size: true  # Whether to reduce student model size
-    size_reduction_factor: 2  # Divide hidden layers and intermediate size by this factor
+    size_reduction_factor: 1  # Divide hidden layers and intermediate size by this factor
 
 data:
   sources:
-    - path: "data/gutenberg/train/bookshelf_57_train.jsonl"
+    - path: "data/wiki_gut_fine_plato/train/merged_clean_output.jsonl"
   max_length: 512
   stride: 380
-  batch_size: 4
-
+  batch_size: 8
 training:
   learning_rate: 1.0e-4
   epochs: 100
