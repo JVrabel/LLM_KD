@@ -10,10 +10,10 @@ data:
     # - path: "data/gutenberg/train/bookshelf_57_train.jsonl"
   max_length: 512
   stride: 380
-  batch_size: 4
+  batch_size: 8
 
 training:
-  learning_rate: 1.0e-4
+  learning_rate: 1e-4
   epochs: 100
   max_steps_per_epoch: null
   gradient_accumulation_steps: 4
@@ -21,8 +21,13 @@ training:
   kd_ratio: 1.0
   seed: 42
   log_every_n_steps: 100
-  eval_every: 200
-  eval_steps: 200
+  eval_every: 100
+  eval_steps: 100
+
+  # --- New KD Loss Configuration ---
+  kd_loss_type: "mse"  # Options: "mse" or "kl_div"
+  kd_temperature: 2.0  # Temperature for KL Divergence (only used if kd_loss_type is "kl_div")
+  # --- End of New KD Loss Configuration ---
 
 checkpointing:
   save_every_n_epochs: 5
