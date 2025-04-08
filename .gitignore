@@ -26,3 +26,14 @@ scraping.log
 models/
 gitignore.txt
 wandb/
+results/
+evaluation_results/
+evaluation_results_base/
+*.log
+*.pt
+*.json
+*.png
+*.txt
+*.csv
+*.jsonl
+*.jsonl.gz
