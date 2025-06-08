@@ -428,8 +428,68 @@ class KDRecipe:
             )
             
             # Train for 2000 steps with NTP only
-            for step in range(2000):
-                self.train_step(step, phase="ntp")
+            ntp_steps_done = 0
+            ntp_target_steps = 2000
+
+            while ntp_steps_done < ntp_target_steps:
+                if isinstance(self.train_loader.sampler, DistributedSampler):
+                    self.train_loader.sampler.set_epoch(self.epochs_run)
+                
+                for step, batch in enumerate(self.train_loader):
+                    if ntp_steps_done >= ntp_target_steps:
+                        break
+                    
+                    with torch.cuda.amp.autocast():
+                        loss, ntp_loss, kd_loss = self._loss_step(batch)
+                        # For NTP phase, only use NTP loss
+                        loss = ntp_loss
+                        scaled_loss = loss / self.gradient_accumulation_steps
+
+                    self.scaler.scale(scaled_loss).backward()
+
+                    if (step + 1) % self.gradient_accumulation_steps == 0:
+                        if self.clip_grad_norm is not None:
+                            self.scaler.unscale_(self.optimizer)
+                            clip_grad_norm_(self.student_model.parameters(), self.clip_grad_norm)
+                        
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                        self.optimizer.zero_grad(set_to_none=True)
+                        self.lr_scheduler.step()
+
+                        ntp_steps_done += 1
+                        self.global_step += 1
+
+                        # Print training metrics every 10 steps
+                        if self.global_step % 10 == 0:
+                            print(f"NTP Step {ntp_steps_done}/{ntp_target_steps}: Loss: {scaled_loss.item():.4f}, LR: {self.lr_scheduler.get_last_lr()[0]:.6f}")
+
+                        # Validation every eval_every steps
+                        if self.global_step % self.eval_every == 0:
+                            print(f"\nStep {self.global_step}: Running validation...")
+                            val_metrics = self.evaluate(self.val_loader, steps=self.eval_steps)
+                            print(f"Validation loss: {val_metrics['loss']:.4f}, Perplexity: {val_metrics['perplexity']:.4f}")
+                            
+                            if self.use_wandb:
+                                wandb.log({
+                                    'val/loss': val_metrics['loss'],
+                                    'val/ntp_loss': val_metrics['ntp_loss'],
+                                    'val/kd_loss': val_metrics['kd_loss'],
+                                    'val/perplexity': val_metrics['perplexity'],
+                                    'val/step': self.global_step
+                                })
+
+                        # Log training metrics to wandb
+                        if self.use_wandb:
+                            wandb.log({
+                                'train/ntp_loss': scaled_loss.item(),
+                                'train/learning_rate': self.lr_scheduler.get_last_lr()[0],
+                                'train/step': self.global_step,
+                            })
+                
+                self.epochs_run += 1
+
+            print(f"NTP warmup completed: {ntp_steps_done} steps")
             
             # Phase 2: KD warmup and training
             print("Starting Phase 2: KD Training with Warmup")
@@ -444,127 +504,105 @@ class KDRecipe:
             )
             
             # Continue with regular epoch-based training using KD
-            for epoch in range(self.epochs_run, self.total_epochs):
-                if isinstance(self.train_loader.sampler, DistributedSampler):
-                    self.train_loader.sampler.set_epoch(epoch)
-                
-                self.student_model.train()
-                total_loss = 0
-                logged_steps = 0
-                
-                progress_bar = tqdm(enumerate(self.train_loader), total=len(self.train_loader), 
+        for epoch in range(self.epochs_run, self.total_epochs):
+            if isinstance(self.train_loader.sampler, DistributedSampler):
+                self.train_loader.sampler.set_epoch(epoch)
+            
+            self.student_model.train()
+            total_loss = 0
+            logged_steps = 0
+            
+            progress_bar = tqdm(enumerate(self.train_loader), total=len(self.train_loader), 
                                   desc=f"Training Epoch {epoch}", leave=True)
-                
-                for step, batch in progress_bar:
-                    if step // self.gradient_accumulation_steps == self.max_steps_per_epoch:
-                        break
+            
+            for step, batch in progress_bar:
+                if step // self.gradient_accumulation_steps == self.max_steps_per_epoch:
+                    break
+
+                with torch.cuda.amp.autocast():
+                    loss, ntp_loss, kd_loss = self._loss_step(batch)
+                        # For KD phase, only use KD loss
+                        loss = kd_loss
+                    scaled_loss = loss / self.gradient_accumulation_steps
+
+                self.scaler.scale(scaled_loss).backward()
+
+                if (step + 1) % self.gradient_accumulation_steps == 0:
+                    if self.clip_grad_norm is not None:
+                        self.scaler.unscale_(self.optimizer)
+                        clip_grad_norm_(self.student_model.parameters(), self.clip_grad_norm)
                     
-                    loss = self.train_step(step, phase="kd")
-                    total_loss += loss
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    self.optimizer.zero_grad(set_to_none=True)
+                    self.lr_scheduler.step()
+
+                    total_loss += scaled_loss.item()
                     logged_steps += 1
-                    
-                    # Log metrics
+                    self.global_step += 1
+
+                    # Print training metrics every 10 steps
+                    if self.global_step % 10 == 0:
+                        progress_bar.set_postfix({
+                            'loss': f"{scaled_loss.item():.4f}",
+                                'kd_loss': f"{kd_loss.item():.4f}",
+                            'lr': f"{self.lr_scheduler.get_last_lr()[0]:.6f}",
+                        })
+
+                    # Validation every eval_every steps
+                    if self.global_step % self.eval_every == 0:
+                        print(f"\nStep {self.global_step}: Running validation...")
+                        val_metrics = self.evaluate(self.val_loader, steps=self.eval_steps)
+                        print(f"Validation loss: {val_metrics['loss']:.4f}, Perplexity: {val_metrics['perplexity']:.4f}")
+                        
+                        if self.use_wandb:
+                            wandb.log({
+                                'val/loss': val_metrics['loss'],
+                                'val/ntp_loss': val_metrics['ntp_loss'],
+                                'val/kd_loss': val_metrics['kd_loss'],
+                                'val/perplexity': val_metrics['perplexity'],
+                                'val/step': self.global_step
+                            })
+
+                    # Log training metrics to wandb
                     if self.use_wandb:
                         wandb.log({
-                            f'train/{self.training_phase}_loss': loss,
+                            'train/kd_loss': scaled_loss.item(),
                             'train/learning_rate': self.lr_scheduler.get_last_lr()[0],
                             'train/step': self.global_step,
                         })
 
-                # End of epoch full validation
-                print("\nRunning full validation...")
-                val_metrics = self.evaluate(self.val_loader)
-                
-                # Log metrics
-                if self.use_wandb:
-                    wandb.log({
-                        'train/epoch_loss': total_loss / logged_steps,
-                        'val/loss': val_metrics['loss'],
-                        'val/ntp_loss': val_metrics['ntp_loss'],
-                        'val/kd_loss': val_metrics['kd_loss'],
-                        'val/perplexity': val_metrics['perplexity'],
-                        'epoch': epoch
-                    })
-                
-                # Save best model based on validation loss
-                if val_metrics['loss'] < self.best_val_loss:
-                    self.best_val_loss = val_metrics['loss']
-                    self.save_checkpoint(epoch, total_loss / logged_steps, val_metrics['loss'], is_best=True)
-                    print(f"New best validation loss: {val_metrics['loss']:.4f}")
-                
-                # Regular checkpoint saving
-                if (epoch + 1) % self.save_checkpoint_every == 0:
-                    self.save_checkpoint(epoch, total_loss / logged_steps, val_metrics['loss'])
-                
-                print(f"Epoch {epoch+1} metrics:")
-                print(f"Train Loss: {total_loss/logged_steps:.4f}")
-                print(f"Val Loss: {val_metrics['loss']:.4f}")
-                print(f"Val Perplexity: {val_metrics['perplexity']:.4f}")
-                
-                self.epochs_run += 1
-
-    def train_step(self, step, phase="kd"):
-        """Modified train_step to handle NTP-only mode"""
-        batch = {k: v.to(self.device) for k, v in batch.items()}
-        
-        with torch.cuda.amp.autocast():
-            if phase == "ntp" or self.ntp_only:
-                # NTP loss computation
-                student_outputs = self.student_model(
-                    input_ids=batch['input_ids'],
-                    attention_mask=batch['attention_mask'],
-                    labels=batch['labels']
-                )
-                loss = self.ntp_loss_fn(
-                    student_outputs.logits.view(-1, student_outputs.logits.size(-1)),
-                    batch['labels'].view(-1)
-                )
-            elif phase == "kd":
-                # KD loss computation (unchanged)
-                with torch.no_grad():
-                    teacher_outputs = self.teacher_model(
-                        input_ids=batch['input_ids'],
-                        attention_mask=batch['attention_mask']
-                    )
-                    teacher_logits = teacher_outputs.logits[..., :-1, :].contiguous()
-                
-                student_outputs = self.student_model(
-                    input_ids=batch['input_ids'],
-                    attention_mask=batch['attention_mask']
-                )
-                student_logits = student_outputs.logits[..., :-1, :].contiguous()
-                
-                # Use only KD loss (either MSE or KL-div based on config)
-                loss = self.kd_loss_fn(
-                    student_logits.view(-1, student_logits.size(-1)),
-                    teacher_logits.view(-1, teacher_logits.size(-1))
-                )
-            else:
-                raise ValueError(f"Unknown training phase: {phase}")
-        
-        # Scale loss and backward pass
-        scaled_loss = loss / self.gradient_accumulation_steps
-        self.scaler.scale(scaled_loss).backward()
-        
-        if (step + 1) % self.gradient_accumulation_steps == 0:
-            if self.clip_grad_norm is not None:
-                self.scaler.unscale_(self.optimizer)
-                clip_grad_norm_(self.student_model.parameters(), self.clip_grad_norm)
-            
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-            self.optimizer.zero_grad(set_to_none=True)
-            self.lr_scheduler.step()
+            # End of epoch full validation
+            print("\nRunning full validation...")
+            val_metrics = self.evaluate(self.val_loader)
             
             # Log metrics
             if self.use_wandb:
                 wandb.log({
-                    'train/ntp_loss' if self.ntp_only else f'train/{phase}_loss': scaled_loss.item(),
-                    'train/learning_rate': self.lr_scheduler.get_last_lr()[0],
-                    'train/step': self.global_step,
+                    'train/epoch_loss': total_loss / logged_steps,
+                    'val/loss': val_metrics['loss'],
+                    'val/ntp_loss': val_metrics['ntp_loss'],
+                    'val/kd_loss': val_metrics['kd_loss'],
+                    'val/perplexity': val_metrics['perplexity'],
+                    'epoch': epoch
                 })
-        
-        return scaled_loss.item()
+            
+            # Save best model based on validation loss
+            if val_metrics['loss'] < self.best_val_loss:
+                self.best_val_loss = val_metrics['loss']
+                self.save_checkpoint(epoch, total_loss / logged_steps, val_metrics['loss'], is_best=True)
+                print(f"New best validation loss: {val_metrics['loss']:.4f}")
+            
+            # Regular checkpoint saving
+            if (epoch + 1) % self.save_checkpoint_every == 0:
+                self.save_checkpoint(epoch, total_loss / logged_steps, val_metrics['loss'])
+            
+            print(f"Epoch {epoch+1} metrics:")
+            print(f"Train Loss: {total_loss/logged_steps:.4f}")
+            print(f"Val Loss: {val_metrics['loss']:.4f}")
+            print(f"Val Perplexity: {val_metrics['perplexity']:.4f}")
+            
+            self.epochs_run += 1
 
     def _log_metrics(self, loss, ntp_loss, kd_loss, lr):
         print(f"Step {self.global_step}: KD Loss: {kd_loss:.4f}, NTP Loss: {ntp_loss:.4f}, LR: {lr:.6f}")
