@@ -350,51 +350,70 @@ class KDRecipe:
                 num_training_steps=self.total_epochs * self.steps_per_epoch
             )
             
-            # Run full training with NTP loss
-            for epoch in range(self.epochs_run, self.total_epochs):
+            # Train for 2000 steps with NTP only
+            ntp_steps_done = 0
+            ntp_target_steps = 2000
+
+            while ntp_steps_done < ntp_target_steps:
                 if isinstance(self.train_loader.sampler, DistributedSampler):
-                    self.train_loader.sampler.set_epoch(epoch)
+                    self.train_loader.sampler.set_epoch(self.epochs_run)
                 
-                self.student_model.train()
-                total_loss = 0
-                logged_steps = 0
-                
-                progress_bar = tqdm(enumerate(self.train_loader), total=len(self.train_loader), 
-                                  desc=f"NTP Training Epoch {epoch}", leave=True)
-                
-                for step, batch in progress_bar:
-                    if step // self.gradient_accumulation_steps == self.max_steps_per_epoch:
+                for step, batch in enumerate(self.train_loader):
+                    if ntp_steps_done >= ntp_target_steps:
                         break
                     
-                    loss = self.train_step(step, phase="ntp")
-                    total_loss += loss
-                    logged_steps += 1
-                    
-                    # Update progress bar
-                    progress_bar.set_postfix({
-                        'loss': f"{loss:.4f}",
-                        'lr': f"{self.lr_scheduler.get_last_lr()[0]:.6f}",
-                    })
-                    
-                    # Validation and checkpoint saving logic
-                    if self.global_step % self.eval_every == 0:
-                        val_metrics = self.evaluate(self.val_loader, steps=self.eval_steps)
+                    with torch.cuda.amp.autocast():
+                        loss, ntp_loss, kd_loss = self._loss_step(batch)
+                        # For NTP phase, only use NTP loss
+                        loss = ntp_loss
+                        scaled_loss = loss / self.gradient_accumulation_steps
+
+                    self.scaler.scale(scaled_loss).backward()
+
+                    if (step + 1) % self.gradient_accumulation_steps == 0:
+                        if self.clip_grad_norm is not None:
+                            self.scaler.unscale_(self.optimizer)
+                            clip_grad_norm_(self.student_model.parameters(), self.clip_grad_norm)
+                        
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                        self.optimizer.zero_grad(set_to_none=True)
+                        self.lr_scheduler.step()
+
+                        ntp_steps_done += 1
+                        self.global_step += 1
+
+                        # Print training metrics every 10 steps
+                        if self.global_step % 10 == 0:
+                            print(f"NTP Step {ntp_steps_done}/{ntp_target_steps}: Loss: {scaled_loss.item():.4f}, LR: {self.lr_scheduler.get_last_lr()[0]:.6f}")
+
+                        # Validation every eval_every steps
+                        if self.global_step % self.eval_every == 0:
+                            print(f"\nStep {self.global_step}: Running validation...")
+                            val_metrics = self.evaluate(self.val_loader, steps=self.eval_steps)
+                            print(f"Validation loss: {val_metrics['loss']:.4f}, Perplexity: {val_metrics['perplexity']:.4f}")
+                            
+                            if self.use_wandb:
+                                wandb.log({
+                                    'val/loss': val_metrics['loss'],
+                                    'val/ntp_loss': val_metrics['ntp_loss'],
+                                    'val/kd_loss': val_metrics['kd_loss'],
+                                    'val/perplexity': val_metrics['perplexity'],
+                                    'val/step': self.global_step
+                                })
+
+                        # Log training metrics to wandb
                         if self.use_wandb:
                             wandb.log({
-                                'val/ntp_loss': val_metrics['loss'],
-                                'val/perplexity': val_metrics['perplexity'],
-                                'val/step': self.global_step
+                                'train/ntp_loss': scaled_loss.item(),
+                                'train/learning_rate': self.lr_scheduler.get_last_lr()[0],
+                                'train/step': self.global_step,
                             })
                 
-                # End of epoch handling
-                print(f"\nEpoch {epoch+1} metrics:")
-                print(f"Train Loss: {total_loss/logged_steps:.4f}")
-                
-                if (epoch + 1) % self.save_checkpoint_every == 0:
-                    self.save_checkpoint(epoch, total_loss/logged_steps, val_metrics['loss'])
-                
                 self.epochs_run += 1
-                
+
+            print(f"NTP warmup completed: {ntp_steps_done} steps")
+            
         else:
             # Original two-phase training (NTP warmup then KD)
             print("Starting Phase 1: NTP Training with Warmup")
