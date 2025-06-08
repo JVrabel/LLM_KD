@@ -6,10 +6,14 @@ model:
 
 data:
   sources:
-    - path: "data/wiki_gut_fine_plato/train/merged_clean_output.jsonl"
+    - path: "data/apollo/merged_apollo_en_corpus.jsonl"
+    #/wiki_gut_fine_plato/train/merged_clean_output.jsonl"
+    # - path: "data/gutenwiki_gut_fine_plato/train/merged_clean_output.jsonl"
+    # - path: "data/gutenberg/train/bookshelf_57_train.jsonl"
   max_length: 512
   stride: 380
   batch_size: 8
+
 training:
   learning_rate: 1.0e-4
   epochs: 100
@@ -22,8 +26,13 @@ training:
   eval_every: 200
   eval_steps: 200
 
+  # --- New KD Loss Configuration ---
+  kd_loss_type: "kl_div"  # Options: "mse" or "kl_div"
+  kd_temperature: 2.0  # Temperature for KL Divergence (only used if kd_loss_type is "kl_div")
+  # --- End of New KD Loss Configuration ---
+
 checkpointing:
-  save_every_n_epochs: 5
+  save_every_n_epochs: 1
   keep_n_checkpoints: 1
   resume: null
 

@@ -162,7 +162,7 @@ class KDRecipe:
     def _setup_lr_scheduler(self):
         return get_linear_schedule_with_warmup(
             self.optimizer,
-            num_warmup_steps=int(0.1 * self.total_epochs * self.steps_per_epoch),
+            num_warmup_steps=2000, #int(0.1 * self.total_epochs * self.steps_per_epoch),
             num_training_steps=self.total_epochs * self.steps_per_epoch
         )
 
@@ -622,6 +622,8 @@ def main(rank=None, world_size=None):
             'save_checkpoint_every': yaml_cfg['checkpointing']['save_every_n_epochs'],
             'keep_n_checkpoints': yaml_cfg['checkpointing']['keep_n_checkpoints'],
             'log_peak_memory_stats': True,
+    	    'kd_loss_type': yaml_cfg['training']['kd_loss_type'],
+            'kd_temperature': yaml_cfg['training']['kd_temperature'],
             'training': yaml_cfg['training'],
             'wandb': yaml_cfg['wandb']
         }

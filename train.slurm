@@ -4,7 +4,7 @@
 #SBATCH --error=/scratch/%u/logs/training_error_%j.log
 #SBATCH --gres=gpu:4           # Request 4 GPUs instead of 1
 #SBATCH --mem=400G            # Increased memory for 4 GPUs
-#SBATCH --time=32:00:00
+#SBATCH --time=31:00:00
 #SBATCH --ntasks=1
 
 # Enable debugging
