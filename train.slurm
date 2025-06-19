@@ -2,9 +2,9 @@
 #SBATCH --job-name=LLM_test_example
 #SBATCH --output=/scratch/%u/logs/training_output_%j.log
 #SBATCH --error=/scratch/%u/logs/training_error_%j.log
-#SBATCH --gres=gpu:4           # Request 4 GPUs instead of 1
-#SBATCH --mem=400G            # Increased memory for 4 GPUs
-#SBATCH --time=31:00:00
+#SBATCH --gres=gpu:6           # Request 4 GPUs instead of 1
+#SBATCH --mem=600G            # Increased memory for 4 GPUs
+#SBATCH --time=48:00:00
 #SBATCH --ntasks=1
 
 # Enable debugging
