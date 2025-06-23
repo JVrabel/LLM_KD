@@ -47,8 +47,19 @@ class SlidingWindowDataset(Dataset):
         with open(file_path, 'r', encoding='utf-8') as f:
             for line in f:
                 data = json.loads(line)
-                # Clean text before tokenization
-                cleaned_text = self.clean_text(data['text'])
+                
+                # Handle different data formats
+                if isinstance(data, list) and len(data) >= 2:
+                    # Q&A format: ["question text", "answer text"]
+                    # Use the full question text (which may contain context)
+                    cleaned_text = self.clean_text(data[0])
+                elif isinstance(data, dict) and 'text' in data:
+                    # Original format: {"text": "some text here"}
+                    cleaned_text = self.clean_text(data['text'])
+                else:
+                    print(f"Warning: Unknown data format: {data}")
+                    continue
+                
                 texts.append(cleaned_text)
         
         examples = []
