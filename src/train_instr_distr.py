@@ -226,8 +226,356 @@ class InstructionKDRecipe:
             loss = self.kd_ratio * kd_loss + (1 - self.kd_ratio) * ntp_loss
             return loss, ntp_loss, kd_loss
 
-    # Copy the rest of the methods from train_distr.py (evaluate, generate_samples, train, etc.)
-    # ... (same implementation as original)
+    def evaluate(self, dataloader, steps=None, desc="Validating"):
+        """Run evaluation on the validation set"""
+        self.student_model.eval()
+        total_loss = 0
+        total_ntp_loss = 0
+        total_kd_loss = 0
+        total_steps = 0
+        
+        # If steps is None, use the full dataset
+        max_steps = steps if steps is not None else len(dataloader)
+        
+        progress_bar = tqdm(enumerate(dataloader), total=max_steps, desc=desc)
+        
+        with torch.no_grad():
+            for step, batch in progress_bar:
+                if step >= max_steps:
+                    break
+                
+                with torch.cuda.amp.autocast():
+                    loss, ntp_loss, kd_loss = self._loss_step(batch)
+                
+                total_loss += loss.item()
+                total_ntp_loss += ntp_loss.item()
+                total_kd_loss += kd_loss.item()
+                total_steps += 1
+                
+                # Update progress bar without showing intermediate losses
+                progress_bar.set_postfix({'steps': f"{step+1}/{max_steps}"})
+        
+        # Calculate averages
+        avg_loss = total_loss / total_steps
+        avg_ntp_loss = total_ntp_loss / total_steps
+        avg_kd_loss = total_kd_loss / total_steps
+        perplexity = torch.exp(torch.tensor(avg_loss)).item()
+        
+        print(f"Validation results: Loss: {avg_loss:.4f}, NTP Loss: {avg_ntp_loss:.4f}, "
+              f"KD Loss: {avg_kd_loss:.4f}, Perplexity: {perplexity:.4f}")
+        
+        self.student_model.train()
+        return {
+            'loss': avg_loss,
+            'ntp_loss': avg_ntp_loss,
+            'kd_loss': avg_kd_loss,
+            'perplexity': perplexity
+        }
+
+    def generate_samples(self, batch):
+        # Only generate samples on the main process (rank 0)
+        if self.rank is not None and self.rank != 0:
+            return None
+        
+        try:
+            input_ids = batch['input_ids'].to(self.device)[:2]  # Take only first 2 examples
+            attention_mask = batch['attention_mask'].to(self.device)[:2]
+            labels = batch['labels'].to(self.device)[:2]  # Make sure to get labels
+            
+            # Get the base model if using DDP
+            student_model = self.student_model.module if isinstance(self.student_model, DDP) else self.student_model
+            
+            # Find the first padding token to determine actual sequence length
+            # We'll use this as our prompt length
+            prompt_length = (attention_mask[0] == 1).sum().item()
+            
+            with torch.no_grad():
+                # Generate from student model
+                student_output = student_model.generate(
+                    input_ids=input_ids[:, :prompt_length],  # Use only the prompt part
+                    max_new_tokens=50,
+                    num_return_sequences=1,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                    do_sample=True,
+                    temperature=0.7,
+                    top_p=0.9
+                )
+                
+                # Generate from teacher model
+                teacher_output = self.teacher_model.generate(
+                    input_ids=input_ids[:, :prompt_length],  # Use only the prompt part
+                    max_new_tokens=50,
+                    num_return_sequences=1,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                    do_sample=True,
+                    temperature=0.7,
+                    top_p=0.9
+                )
+            
+            samples = []
+            for i in range(len(input_ids)):
+                # Get the prompt text
+                prompt = self.tokenizer.decode(input_ids[i][:prompt_length], skip_special_tokens=True)
+                
+                # Get the actual continuation (ground truth) - use labels to avoid padding
+                ground_truth_ids = labels[i][prompt_length:]
+                # Remove padding tokens from ground truth
+                ground_truth_ids = ground_truth_ids[ground_truth_ids != self.tokenizer.pad_token_id]
+                ground_truth = self.tokenizer.decode(ground_truth_ids, skip_special_tokens=True)
+                
+                # Get model completions
+                student_completion = self.tokenizer.decode(
+                    student_output[i][prompt_length:], 
+                    skip_special_tokens=True
+                )
+                teacher_completion = self.tokenizer.decode(
+                    teacher_output[i][prompt_length:], 
+                    skip_special_tokens=True
+                )
+                
+                samples.append({
+                    'prompt': prompt,
+                    'student_completion': student_completion,
+                    'teacher_completion': teacher_completion,
+                    'ground_truth': ground_truth
+                })
+                
+                # Print samples for debugging
+                if i == 0:  # Print first sample
+                    print("\nSample generation:")
+                    print(f"Prompt: {prompt[:100]}...")
+                    print(f"Ground Truth: {ground_truth[:100]}...")
+                    print(f"Student: {student_completion[:100]}...")
+                    print(f"Teacher: {teacher_completion[:100]}...")
+            
+            return samples
+            
+        except Exception as e:
+            print(f"Error in generate_samples: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def train(self):
+        # Main training loop for instruction tuning
+        for epoch in range(self.epochs_run, self.total_epochs):
+            # Set epoch for distributed sampler
+            if isinstance(self.train_loader.sampler, DistributedSampler):
+                self.train_loader.sampler.set_epoch(epoch)
+            
+            self.student_model.train()
+            total_loss = 0
+            total_ntp_loss = 0
+            total_kd_loss = 0
+            logged_steps = 0
+            
+            desc = "Instruction NTP Training" if self.ntp_only else "Instruction KD Training"
+            progress_bar = tqdm(enumerate(self.train_loader), total=len(self.train_loader), 
+                              desc=f"{desc} Epoch {epoch}", leave=True)
+            
+            for step, batch in progress_bar:
+                if step // self.gradient_accumulation_steps == self.max_steps_per_epoch:
+                    break
+
+                with torch.cuda.amp.autocast():
+                    loss, ntp_loss, kd_loss = self._loss_step(batch)
+                    scaled_loss = loss / self.gradient_accumulation_steps
+                    scaled_ntp_loss = ntp_loss / self.gradient_accumulation_steps
+                    scaled_kd_loss = kd_loss / self.gradient_accumulation_steps
+
+                self.scaler.scale(scaled_loss).backward()
+
+                if (step + 1) % self.gradient_accumulation_steps == 0:
+                    if self.clip_grad_norm is not None:
+                        self.scaler.unscale_(self.optimizer)
+                        clip_grad_norm_(self.student_model.parameters(), self.clip_grad_norm)
+                    
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    self.optimizer.zero_grad(set_to_none=True)
+                    self.lr_scheduler.step()
+
+                    # Accumulate the scaled losses
+                    total_loss += scaled_loss.item()
+                    total_ntp_loss += scaled_ntp_loss.item()
+                    total_kd_loss += scaled_kd_loss.item()
+                    logged_steps += 1
+                    self.global_step += 1
+
+                    # Print training metrics every 10 steps
+                    if self.global_step % 10 == 0:
+                        if self.ntp_only:
+                            progress_bar.set_postfix({
+                                'ntp_loss': f"{scaled_ntp_loss.item():.4f}",
+                                'lr': f"{self.lr_scheduler.get_last_lr()[0]:.6f}",
+                            })
+                        else:
+                            progress_bar.set_postfix({
+                                'loss': f"{scaled_loss.item():.4f}",
+                                'ntp_loss': f"{scaled_ntp_loss.item():.4f}",
+                                'kd_loss': f"{scaled_kd_loss.item():.4f}",
+                                'lr': f"{self.lr_scheduler.get_last_lr()[0]:.6f}",
+                            })
+
+                    # Validation every eval_every steps
+                    if self.global_step % self.eval_every == 0:
+                        print(f"\nStep {self.global_step}: Running validation...")
+                        val_metrics = self.evaluate(self.val_loader, steps=self.eval_steps)
+                        print(f"Validation loss: {val_metrics['loss']:.4f}, Perplexity: {val_metrics['perplexity']:.4f}")
+                        
+                        if self.use_wandb:
+                            wandb.log({
+                                'val/loss': val_metrics['loss'],
+                                'val/ntp_loss': val_metrics['ntp_loss'],
+                                'val/kd_loss': val_metrics['kd_loss'],
+                                'val/perplexity': val_metrics['perplexity'],
+                                'val/step': self.global_step
+                            })
+
+                    # Generate and save samples
+                    if self.global_step % self.cfg['wandb']['generate_every_n_steps'] == 0:
+                        print(f"\nStep {self.global_step}: Generating samples...")
+                        samples = self.generate_samples(batch)
+                        
+                        # Save locally
+                        self.save_samples(samples, epoch, self.global_step)
+                        
+                        # Log to wandb if enabled
+                        if self.use_wandb:
+                            # Create a wandb.Table for the samples
+                            samples_table = wandb.Table(
+                                columns=["step", "prompt", "student_completion", "teacher_completion", "ground_truth"],
+                                data=[
+                                    [self.global_step, s['prompt'], s['student_completion'], 
+                                     s['teacher_completion'], s['ground_truth']] for s in samples
+                                ]
+                            )
+                            wandb.log({
+                                f"samples/step_{self.global_step}": samples_table,
+                            })
+
+                    # Log training metrics to wandb
+                    if self.use_wandb:
+                        log_data = {
+                            'train/learning_rate': self.lr_scheduler.get_last_lr()[0],
+                            'train/step': self.global_step,
+                        }
+                        if self.ntp_only:
+                            log_data['train/ntp_loss'] = scaled_ntp_loss.item()
+                        else:
+                            log_data.update({
+                                'train/loss': scaled_loss.item(),
+                                'train/ntp_loss': scaled_ntp_loss.item(),
+                                'train/kd_loss': scaled_kd_loss.item(),
+                            })
+                        wandb.log(log_data)
+
+            # End of epoch full validation
+            print("\nRunning full validation...")
+            val_metrics = self.evaluate(self.val_loader)
+            
+            # Log metrics
+            if self.use_wandb:
+                wandb.log({
+                    'train/epoch_loss': total_loss / logged_steps,
+                    'train/epoch_ntp_loss': total_ntp_loss / logged_steps,
+                    'train/epoch_kd_loss': total_kd_loss / logged_steps,
+                    'val/loss': val_metrics['loss'],
+                    'val/ntp_loss': val_metrics['ntp_loss'],
+                    'val/kd_loss': val_metrics['kd_loss'],
+                    'val/perplexity': val_metrics['perplexity'],
+                    'epoch': epoch
+                })
+            
+            # Save best model based on validation loss
+            if val_metrics['loss'] < self.best_val_loss:
+                self.best_val_loss = val_metrics['loss']
+                self.save_checkpoint(epoch, total_loss / logged_steps, val_metrics['loss'], is_best=True)
+                print(f"New best validation loss: {val_metrics['loss']:.4f}")
+            
+            # Regular checkpoint saving
+            if (epoch + 1) % self.save_checkpoint_every == 0:
+                self.save_checkpoint(epoch, total_loss / logged_steps, val_metrics['loss'])
+            
+            print(f"Epoch {epoch+1} metrics:")
+            print(f"Train Loss: {total_loss/logged_steps:.4f}")
+            print(f"Val Loss: {val_metrics['loss']:.4f}")
+            print(f"Val Perplexity: {val_metrics['perplexity']:.4f}")
+            
+            self.epochs_run += 1
+
+    def save_samples(self, samples, epoch, step):
+        samples_file = os.path.join(self.eval_dir, f'samples_epoch_{epoch}_step_{step}.json')
+        with open(samples_file, 'w', encoding='utf-8') as f:
+            json.dump(samples, f, indent=2)
+        print(f"Saved samples to {samples_file}")
+
+    def save_checkpoint(self, epoch, train_loss, val_loss, is_best=False):
+        # Only save checkpoint from rank 0 process
+        if self.rank is not None and self.rank != 0:
+            return
+
+        checkpoint = {
+            'epoch': epoch,
+            # Use .module to get the underlying model if using DDP
+            'student_model_state_dict': self.student_model.module.state_dict() 
+                if hasattr(self.student_model, 'module') 
+                else self.student_model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'lr_scheduler_state_dict': self.lr_scheduler.state_dict(),
+            'train_loss': train_loss,
+            'val_loss': val_loss,
+            'train_losses': self.train_losses,
+            'eval_losses': self.eval_losses,
+            'train_ppls': self.train_ppls,
+            'eval_ppls': self.eval_ppls,
+            'wandb_run_id': wandb.run.id if self.use_wandb else None
+        }
+
+        if is_best:
+            checkpoint_path = os.path.join(self.checkpoint_dir, "best_model.pt")
+        else:
+            checkpoint_path = os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pt")
+        
+        torch.save(checkpoint, checkpoint_path)
+        
+        if self.rank is None or self.rank == 0:  # Only print from main process
+            print(f"Saved checkpoint to {checkpoint_path}")
+        
+        if not is_best:
+            # Keep only the N most recent checkpoints
+            checkpoints = sorted([f for f in os.listdir(self.checkpoint_dir) if f.startswith("checkpoint")])
+            for old_checkpoint in checkpoints[:-self.keep_n_checkpoints]:
+                os.remove(os.path.join(self.checkpoint_dir, old_checkpoint))
+
+    def load_checkpoint(self, checkpoint_path):
+        if not os.path.exists(checkpoint_path):
+            raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+        
+        # Load checkpoint to CPU first to avoid GPU RAM issues
+        checkpoint = torch.load(checkpoint_path, map_location='cpu')
+        
+        # Load state dict into model (handle DDP case)
+        if hasattr(self.student_model, 'module'):
+            self.student_model.module.load_state_dict(checkpoint['student_model_state_dict'])
+        else:
+            self.student_model.load_state_dict(checkpoint['student_model_state_dict'])
+        
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
+        self.epochs_run = checkpoint['epoch'] + 1
+        self.train_losses = checkpoint.get('train_losses', [])
+        self.eval_losses = checkpoint.get('eval_losses', [])
+        self.train_ppls = checkpoint.get('train_ppls', [])
+        self.eval_ppls = checkpoint.get('eval_ppls', [])
+        
+        if self.rank is None or self.rank == 0:  # Only print from main process
+            print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
+
+    def __del__(self):
+        # Cleanup wandb
+        if self.use_wandb:
+            wandb.finish()
 
 def main(rank=None, world_size=None):
     warnings.filterwarnings("ignore", category=FutureWarning)
