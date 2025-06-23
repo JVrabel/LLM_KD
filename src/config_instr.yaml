@@ -1,0 +1,43 @@
+# Instruction Tuning Configuration (Phase 2)
+teacher_model:
+  name: "meta-llama/Llama-3.2-1B-Instruct"  # Instruction-tuned teacher
+
+model:
+  student:
+    reduce_size: true
+    size_reduction_factor: 1
+
+data:
+  instruction_path: "data/apollo/qa/merged_apollo_en_qa.jsonl"  # Q&A format data
+  max_length: 512
+  stride: 380
+  batch_size: 8
+
+training:
+  learning_rate: 1.0e-5  # Lower LR for fine-tuning
+  epochs: 2
+  max_steps_per_epoch: 1000
+  gradient_accumulation_steps: 4
+  clip_grad_norm: 1.0
+  kd_ratio: 1.0  # Pure KD loss
+  seed: 42
+  log_every_n_steps: 10
+  eval_every: 100
+  eval_steps: 100
+  kd_loss_type: "kl_div"
+  kd_temperature: 2.0
+
+checkpointing:
+  save_every_n_epochs: 1
+  keep_n_checkpoints: 3
+
+output:
+  dir: "outputs/instruction_tuning"
+
+wandb:
+  enabled: true
+  project: "llm-instruction-kd"
+  name: "instruction-phase2"
+  tags: ["instruction", "knowledge-distillation", "phase2"]
+  notes: "Phase 2: Instruction tuning with KD"
+  generate_every_n_steps: 500
