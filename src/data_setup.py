@@ -51,10 +51,11 @@ class SlidingWindowDataset(Dataset):
                 # Handle different data formats
                 if isinstance(data, list) and len(data) >= 2:
                     # Q&A format: ["question text", "answer text"]
-                    # Use instruction-like formatting
                     question = self.clean_text(data[0])
                     answer = self.clean_text(data[1])
-                    cleaned_text = f"Question: {question}\nAnswer: {answer}"
+                    # Add EOS token after answer to teach the model when to stop
+                    eos_token = self.tokenizer.eos_token if self.tokenizer.eos_token else "</s>"
+                    cleaned_text = f"{question}\n\nAnswer: {answer}{eos_token}"
                 elif isinstance(data, dict) and 'text' in data:
                     # Original format: {"text": "some text here"}
                     cleaned_text = self.clean_text(data['text'])
