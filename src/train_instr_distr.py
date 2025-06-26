@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader, random_split
 from transformers import (AutoTokenizer, AutoModelForCausalLM, AutoConfig, 
                           BitsAndBytesConfig, LlamaConfig, LlamaForCausalLM, 
-                          get_linear_schedule_with_warmup)
+                          get_linear_schedule_with_warmup, get_constant_schedule_with_warmup)
 import json
 import os
 from tqdm import tqdm
@@ -164,10 +164,10 @@ class InstructionKDRecipe:
         return train_loader, val_loader
 
     def _setup_lr_scheduler(self):
-        return get_linear_schedule_with_warmup(
+        # For instruction tuning, use constant LR after warmup (no decay)
+        return get_constant_schedule_with_warmup(
             self.optimizer,
-            num_warmup_steps=2000,
-            num_training_steps=self.total_epochs * self.steps_per_epoch
+            num_warmup_steps=2000
         )
 
     def _loss_step(self, batch):

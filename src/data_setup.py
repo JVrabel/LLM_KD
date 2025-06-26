@@ -51,8 +51,10 @@ class SlidingWindowDataset(Dataset):
                 # Handle different data formats
                 if isinstance(data, list) and len(data) >= 2:
                     # Q&A format: ["question text", "answer text"]
-                    # Use the full question text (which may contain context)
-                    cleaned_text = self.clean_text(data[0])
+                    # Use instruction-like formatting
+                    question = self.clean_text(data[0])
+                    answer = self.clean_text(data[1])
+                    cleaned_text = f"Question: {question}\nAnswer: {answer}"
                 elif isinstance(data, dict) and 'text' in data:
                     # Original format: {"text": "some text here"}
                     cleaned_text = self.clean_text(data['text'])
