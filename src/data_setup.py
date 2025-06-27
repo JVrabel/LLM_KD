@@ -6,12 +6,15 @@ from tqdm import tqdm
 from torch.utils.data.distributed import DistributedSampler
 
 class SlidingWindowDataset(Dataset):
-    def __init__(self, file_path, tokenizer, max_length, stride):
+    def __init__(self, file_path, tokenizer, max_length, stride, use_sliding_window=True):
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.stride = stride
-        # Create a cache file name based on the input file, max_length, and stride
-        cache_name = os.path.basename(file_path) + f".cache_{max_length}_{stride}_v2.pt"
+        self.use_sliding_window = use_sliding_window
+        
+        # Create cache name that includes sliding window setting
+        cache_suffix = "_sliding" if use_sliding_window else "_no_sliding"
+        cache_name = os.path.basename(file_path) + f".cache_{max_length}_{stride}{cache_suffix}_v2.pt"
         self.cache_file = os.path.join(os.path.dirname(file_path), cache_name)
         
         if os.path.exists(self.cache_file):
@@ -66,29 +69,51 @@ class SlidingWindowDataset(Dataset):
                 texts.append(cleaned_text)
         
         examples = []
-        print("Tokenizing cleaned texts with sliding window...")
-        for text in tqdm(texts):
-            tokenized = self.tokenizer(
-                text,
-                return_overflowing_tokens=True, 
-                max_length=self.max_length,
-                stride=self.stride,
-                truncation=True,
-                padding='max_length',
-                return_tensors='pt'
-            )
-            
-            for i in range(len(tokenized['input_ids'])):
-                input_ids = tokenized['input_ids'][i]
-                attention_mask = tokenized['attention_mask'][i]
-                # For causal language modeling, labels are the same as input_ids
+        print("Tokenizing cleaned texts...")
+        
+        if self.use_sliding_window:
+            # Use sliding window (for pretraining)
+            print("Using sliding window tokenization...")
+            for text in tqdm(texts):
+                tokenized = self.tokenizer(
+                    text,
+                    return_overflowing_tokens=True, 
+                    max_length=self.max_length,
+                    stride=self.stride,
+                    truncation=True,
+                    padding='max_length',
+                    return_tensors='pt'
+                )
+                
+                for i in range(len(tokenized['input_ids'])):
+                    input_ids = tokenized['input_ids'][i]
+                    attention_mask = tokenized['attention_mask'][i]
+                    examples.append({
+                        'input_ids': input_ids,
+                        'attention_mask': attention_mask,
+                        'labels': input_ids.clone()
+                    })
+        else:
+            # No sliding window (for instruction tuning)
+            print("Using single-example tokenization...")
+            for text in tqdm(texts):
+                tokenized = self.tokenizer(
+                    text,
+                    max_length=self.max_length,
+                    truncation=True,
+                    padding='max_length',
+                    return_tensors='pt'
+                )
+                
+                input_ids = tokenized['input_ids'].squeeze(0)
+                attention_mask = tokenized['attention_mask'].squeeze(0)
                 examples.append({
                     'input_ids': input_ids,
                     'attention_mask': attention_mask,
-                    'labels': input_ids.clone()  # Clone to avoid sharing memory
+                    'labels': input_ids.clone()
                 })
                 
-        print(f"Created {len(examples)} examples with sliding window.")
+        print(f"Created {len(examples)} examples.")
         return examples
 
     def __len__(self):
@@ -113,11 +138,15 @@ def collate_fn(batch):
     }
 
 def setup_dataloaders(cfg, tokenizer, rank=None, world_size=None):
+    # Check if this is instruction tuning (no sliding window for Q&A)
+    use_sliding_window = not cfg.get('is_instruction_tuning', False)
+    
     dataset = SlidingWindowDataset(
         cfg['data_path'], 
         tokenizer, 
         cfg['max_length'], 
-        cfg['stride']
+        cfg['stride'],
+        use_sliding_window=use_sliding_window
     )
     
     # Split into train (90%) and val (10%)

@@ -627,7 +627,8 @@ def main(rank=None, world_size=None):
             'kd_temperature': yaml_cfg['training']['kd_temperature'],
             'training': yaml_cfg['training'],
             'wandb': yaml_cfg['wandb'],
-            'ntp_only': args.ntp_only
+            'ntp_only': args.ntp_only,
+            'is_instruction_tuning': True
         }
 
         print(f"CUDA available: {torch.cuda.is_available()}")
