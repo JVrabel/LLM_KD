@@ -1,4 +1,5 @@
 model:
+  # name: "meta-llama/Llama-3.2-1b"
   name: "meta-llama/Llama-3.2-1b"
   student:
     reduce_size: true  # Whether to reduce student model size
@@ -6,7 +7,8 @@ model:
 
 data:
   sources:
-    - path: "data/processed/merged_train.jsonl"
+    - path: "/home/LIBS/vrabel/projects/LLM_KD/data/merged_apollo_en_corpus.jsonl"
+    # - path: "data/processed/merged_train.jsonl"
     # - path: "data/gutenberg/train/bookshelf_57_train.jsonl"
   max_length: 512
   stride: 380
@@ -25,7 +27,7 @@ training:
   eval_steps: 100
 
   # --- New KD Loss Configuration ---
-  kd_loss_type: "mse"  # Options: "mse" or "kl_div"
+  kd_loss_type: "kl_div"  # Options: "mse" or "kl_div"
   kd_temperature: 2.0  # Temperature for KL Divergence (only used if kd_loss_type is "kl_div")
   # --- End of New KD Loss Configuration ---
 

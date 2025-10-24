@@ -6,12 +6,15 @@ from tqdm import tqdm
 from torch.utils.data.distributed import DistributedSampler
 
 class SlidingWindowDataset(Dataset):
-    def __init__(self, file_path, tokenizer, max_length, stride):
+    def __init__(self, file_path, tokenizer, max_length, stride, dataset_fraction=1.0):
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.stride = stride
-        # Create a cache file name based on the input file, max_length, and stride
-        cache_name = os.path.basename(file_path) + f".cache_{max_length}_{stride}_v2.pt"
+        self.dataset_fraction = dataset_fraction
+        
+        # Update cache name to include fraction
+        fraction_suffix = f"_frac{dataset_fraction}" if dataset_fraction < 1.0 else ""
+        cache_name = os.path.basename(file_path) + f".cache_{max_length}_{stride}{fraction_suffix}_v2.pt"
         self.cache_file = os.path.join(os.path.dirname(file_path), cache_name)
         
         if os.path.exists(self.cache_file):
@@ -44,10 +47,23 @@ class SlidingWindowDataset(Dataset):
     def load_and_preprocess(self, file_path):
         texts = []
         print("Loading and cleaning texts...")
+        
+        if self.dataset_fraction < 1.0:
+            # Count total lines first
+            with open(file_path, 'r', encoding='utf-8') as f:
+                total_lines = sum(1 for _ in f)
+            
+            max_lines = int(total_lines * self.dataset_fraction)
+            print(f"Loading {max_lines} out of {total_lines} texts ({self.dataset_fraction*100:.1f}%)")
+        else:
+            max_lines = float('inf')
+        
         with open(file_path, 'r', encoding='utf-8') as f:
-            for line in f:
+            for i, line in enumerate(f):
+                if i >= max_lines:
+                    break
+                    
                 data = json.loads(line)
-                # Clean text before tokenization
                 cleaned_text = self.clean_text(data['text'])
                 texts.append(cleaned_text)
         
@@ -103,7 +119,8 @@ def setup_dataloaders(cfg, tokenizer, rank=None, world_size=None):
         cfg['data_path'], 
         tokenizer, 
         cfg['max_length'], 
-        cfg['stride']
+        cfg['stride'],
+        dataset_fraction=cfg.get('dataset_fraction', 0.05)
     )
     
     # Split into train (90%) and val (10%)
