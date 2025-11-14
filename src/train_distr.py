@@ -171,6 +171,15 @@ class KDRecipe:
         # Move batch to correct device
         batch = {k: v.to(self.device) for k, v in batch.items()}
         
+        # *** NEW: Mask padding tokens in labels ***
+        # Set padding positions to -100 so they're ignored in loss
+        labels = batch['labels'].clone()
+        attention_mask = batch['attention_mask']
+        labels[attention_mask == 0] = -100
+        # Update batch with masked labels
+        batch['labels'] = labels
+        # *** END NEW ***
+        
         if self.ntp_only:
             # NTP-only mode: only compute NTP loss
             student_outputs = self.student_model(

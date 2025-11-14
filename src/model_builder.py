@@ -89,19 +89,30 @@ class ModelBuilder:
         # Option 1: MSE Logit Matching
         mse_loss = nn.MSELoss()
         def mse_kd_loss(student_logits, teacher_logits, labels=None):
-            # labels are ignored by MSELoss but included for consistent signature
+            if labels is not None:
+                mask = (labels != -100)
+                student_masked = student_logits[mask]
+                teacher_masked = teacher_logits[mask]
+                if student_masked.numel() == 0:
+                    return torch.tensor(0.0, device=student_logits.device)
+                return mse_loss(student_masked, teacher_masked)
             return mse_loss(student_logits, teacher_logits)
 
         # Option 2: KL Divergence Loss
         def kl_div_kd_loss(student_logits, teacher_logits, labels=None):
             # Apply temperature scaling and softmax
-            # Ensure logits are float for softmax/log_softmax if using AMP/lower precision
             soft_teacher_logits = F.softmax(teacher_logits.float() / self.kd_temperature, dim=-1)
             log_soft_student_logits = F.log_softmax(student_logits.float() / self.kd_temperature, dim=-1)
-
-            # Calculate KL divergence loss
-            # Note: F.kl_div expects log-probabilities as input, probabilities as target.
-            # The loss is scaled by T^2 according to the original Hinton paper.
+            
+            # *** ADD MASKING ***
+            if labels is not None:
+                mask = (labels != -100)
+                soft_teacher_logits = soft_teacher_logits[mask]
+                log_soft_student_logits = log_soft_student_logits[mask]
+                if soft_teacher_logits.numel() == 0:
+                    return torch.tensor(0.0, device=student_logits.device)
+            # *** END MASKING ***
+            
             kl_loss = F.kl_div(log_soft_student_logits, soft_teacher_logits, reduction='batchmean') * (self.kd_temperature ** 2)
             return kl_loss
 
