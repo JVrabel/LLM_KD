@@ -161,10 +161,15 @@ class KDRecipe:
         return train_loader, val_loader
 
     def _setup_lr_scheduler(self):
+        # Account for the 2000 manual NTP warmup steps
+        # These steps happen BEFORE the main training loop
+        manual_warmup_steps = 2000 if not self.ntp_only else 0
+        total_training_steps = self.total_epochs * self.steps_per_epoch + manual_warmup_steps
+        
         return get_linear_schedule_with_warmup(
             self.optimizer,
-            num_warmup_steps=2000, #int(0.1 * self.total_epochs * self.steps_per_epoch),
-            num_training_steps=self.total_epochs * self.steps_per_epoch
+            num_warmup_steps=2000,
+            num_training_steps=total_training_steps
         )
 
     def _loss_step(self, batch):
@@ -267,7 +272,8 @@ class KDRecipe:
         avg_loss = total_loss / total_steps
         avg_ntp_loss = total_ntp_loss / total_steps
         avg_kd_loss = total_kd_loss / total_steps
-        perplexity = torch.exp(torch.tensor(avg_loss)).item()
+        # For perplexity, use NTP loss only (cross-entropy)
+        perplexity = torch.exp(torch.tensor(avg_ntp_loss)).item()
         
         print(f"Validation results: Loss: {avg_loss:.4f}, NTP Loss: {avg_ntp_loss:.4f}, "
               f"KD Loss: {avg_kd_loss:.4f}, Perplexity: {perplexity:.4f}")
