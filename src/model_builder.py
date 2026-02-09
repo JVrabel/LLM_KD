@@ -31,6 +31,7 @@ class ModelBuilder:
     def _setup_tokenizer(self):
         tokenizer = AutoTokenizer.from_pretrained(self.cfg['model_name'])
         tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.padding_side = "right"
         return tokenizer
 
     def _setup_student_model(self):

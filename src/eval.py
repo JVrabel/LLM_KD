@@ -194,6 +194,65 @@ def run_mmlu_eval(model_path, output_dir, cfg, checkpoint_path, use_base_model, 
             import shutil
             shutil.rmtree("temp_model_for_eval")
 
+def run_custom_eval(model, tokenizer, dataset_path):
+    """Run evaluation on a custom dataset."""
+    with open(dataset_path, "r") as f:
+        dataset = json.load(f)
+
+    results = []
+    print(f"Evaluating on {len(dataset)} examples...")
+
+    for i, item in enumerate(dataset):
+        context = item.get("context", "")
+        question = item["question"]
+        choices = item["choices"]
+        correct_answer = item["correct_answer"]
+
+        # Format input for the model
+        prompt = f"{context}\n{question}\n"
+        for key, value in choices.items():
+            prompt += f"{key}. {value}\n"
+        prompt += "Answer:"
+
+        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+
+        # Generate one token
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=1,
+                pad_token_id=tokenizer.eos_token_id,
+                temperature=0.001,  # Greedy decoding
+            )
+
+        # Decode the generated token
+        new_tokens = outputs[0][inputs.input_ids.shape[1] :]
+        prediction = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+
+        # Store the result
+        is_correct = prediction.upper() == correct_answer.upper()
+        results.append(
+            {
+                "question": question,
+                "prediction": prediction,
+                "correct_answer": correct_answer,
+                "correct": is_correct,
+            }
+        )
+
+        print(f"Example {i+1}:")
+        print(f"Prompt:\n{prompt}")
+        print(f"Prediction: {prediction}")
+        print(f"Correct Answer: {correct_answer}")
+        print(f"Result: {'PASS' if is_correct else 'FAIL'}")
+        print("-" * 30)
+
+    # Calculate accuracy
+    accuracy = sum(1 for r in results if r["correct"]) / len(results)
+    print(f"\nTotal Accuracy: {accuracy:.2%}")
+
+    return results
+
 def main():
     parser = argparse.ArgumentParser(description='Run MMLU evaluation on a trained model')
     parser.add_argument('--checkpoint', type=str, help='Path to model checkpoint')
