@@ -139,7 +139,7 @@ def run_mmlu_eval(model_path, output_dir, cfg, checkpoint_path, use_base_model, 
     cmd = [
         "accelerate", "launch", "-m", "lm_eval",
         "--model", "hf",
-        "--model_args", f"pretrained={model_path},trust_remote_code=True,dtype=bfloat16",
+        "--model_args", f"pretrained={model_path},trust_remote_code=True",
         "--tasks", tasks,
         "--num_fewshot", "5",
         "--device", "cuda:0",
