@@ -8,7 +8,12 @@ model:
     size_reduction_factor: 1
 
 data:
-  instruction_path: "data/apollo/qa/merged_apollo_en_qa.jsonl"  # Q&A format data
+  # Supported JSONL formats:
+  # 1) ["question", "answer"]
+  # 2) {"instruction": "...", "output": "...", "input": "..."}  # optional input
+  # 3) {"question": "...", "answer": "..."}
+  # 4) {"prompt": "...", "response": "..."}
+  instruction_path: "data/apollo/qa/merged_apollo_en_qa.jsonl"
   max_length: 512
   stride: 380
   batch_size: 8

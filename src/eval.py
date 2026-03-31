@@ -4,16 +4,22 @@ import os
 from pathlib import Path
 import subprocess
 import json
+import shutil
+import tempfile
 import torch
 from datetime import datetime
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 
-def load_model_info(checkpoint_path, cfg, use_base_model=False, use_teacher_model=False):
+def create_temp_model_dir(temp_dir=None):
+    temp_root = Path(temp_dir) if temp_dir else Path(".")
+    temp_root.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix="temp_model_for_eval_", dir=str(temp_root)))
+
+def load_model_info(checkpoint_path, cfg, use_base_model=False, use_teacher_model=False, temp_dir=None):
     """Prepare model information for evaluation - FIXED VERSION"""
-    temp_model_path = Path("temp_model_for_eval")
-    temp_model_path.mkdir(exist_ok=True)
-    
     if use_teacher_model:
+        temp_model_path = create_temp_model_dir(temp_dir)
+
         # Load teacher model as full base model (no quantization)
         print("Loading teacher model (full-size base model, no quantization)")
         model = AutoModelForCausalLM.from_pretrained(
@@ -27,8 +33,16 @@ def load_model_info(checkpoint_path, cfg, use_base_model=False, use_teacher_mode
     elif use_base_model:
         # Just use base model with student configuration
         model_config = AutoConfig.from_pretrained(cfg['model']['name'])
-        if cfg['model']['student'].get('reduce_size', False):
-            factor = cfg['model']['student']['size_reduction_factor']
+        reduce_size = cfg['model']['student'].get('reduce_size', False)
+        factor = cfg['model']['student'].get('size_reduction_factor', 1)
+
+        # Avoid exporting and reloading the model when evaluating the unchanged base model.
+        if not reduce_size or factor == 1:
+            print("Using base model directly; skipping temporary export")
+            return cfg['model']['name'], None
+
+        temp_model_path = create_temp_model_dir(temp_dir)
+        if reduce_size:
             print(f"Using base model with reduced size (factor: {factor})")
             # Match training: reduce num_hidden_layers and intermediate_size only
             model_config.num_hidden_layers = max(1, model_config.num_hidden_layers // factor)
@@ -44,6 +58,7 @@ def load_model_info(checkpoint_path, cfg, use_base_model=False, use_teacher_mode
         
     else:
         print(f"\nLoading checkpoint from: {checkpoint_path}")
+        temp_model_path = create_temp_model_dir(temp_dir)
         
         # Create model configuration (match training config exactly)
         model_config = AutoConfig.from_pretrained(cfg['model']['name'])
@@ -88,7 +103,7 @@ def load_model_info(checkpoint_path, cfg, use_base_model=False, use_teacher_mode
     tokenizer = AutoTokenizer.from_pretrained(cfg['model']['name'])
     tokenizer.save_pretrained(temp_model_path)
     
-    return str(temp_model_path.absolute())
+    return str(temp_model_path.absolute()), str(temp_model_path.absolute())
 
 def create_model_identifier(cfg, checkpoint_path, use_base_model, use_teacher_model, medical_only):
     """Create a descriptive identifier for the model being evaluated"""
@@ -119,7 +134,7 @@ def create_model_identifier(cfg, checkpoint_path, use_base_model, use_teacher_mo
     
     return f"{base_model}_{model_type}{size_info}_{eval_scope}_{timestamp}"
 
-def run_mmlu_eval(model_path, output_dir, cfg, checkpoint_path, use_base_model, use_teacher_model, medical_only=False):
+def run_mmlu_eval(model_path, output_dir, cfg, checkpoint_path, use_base_model, use_teacher_model, medical_only=False, temp_model_dir=None):
     """Run MMLU evaluation using lm-evaluation-harness"""
     # Create descriptive filename
     model_id = create_model_identifier(cfg, checkpoint_path, use_base_model, use_teacher_model, medical_only)
@@ -189,10 +204,8 @@ def run_mmlu_eval(model_path, output_dir, cfg, checkpoint_path, use_base_model, 
         print(f"Evaluation failed with error: {e}")
         return None
     finally:
-        # Cleanup temporary model directory
-        if Path("temp_model_for_eval").exists():
-            import shutil
-            shutil.rmtree("temp_model_for_eval")
+        if temp_model_dir and Path(temp_model_dir).exists():
+            shutil.rmtree(temp_model_dir)
 
 def run_custom_eval(model, tokenizer, dataset_path):
     """Run evaluation on a custom dataset."""
@@ -261,6 +274,7 @@ def main():
     parser.add_argument('--use_base_model', action='store_true', help='Use base HF model with student config instead of checkpoint')
     parser.add_argument('--use_teacher_model', action='store_true', help='Use teacher model (full-size, unquantized) for evaluation')
     parser.add_argument('--medical_only', action='store_true', help='Evaluate only medical MMLU tasks')
+    parser.add_argument('--temp_dir', type=str, default=None, help='Directory for temporary exported models')
     args = parser.parse_args()
     
     # Validation: only one model type can be selected
@@ -276,8 +290,23 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     
     # Get model info and run evaluation
-    model_path = load_model_info(args.checkpoint, cfg, args.use_base_model, args.use_teacher_model)
-    results = run_mmlu_eval(model_path, args.output_dir, cfg, args.checkpoint, args.use_base_model, args.use_teacher_model, args.medical_only)
+    model_path, temp_model_dir = load_model_info(
+        args.checkpoint,
+        cfg,
+        args.use_base_model,
+        args.use_teacher_model,
+        args.temp_dir,
+    )
+    results = run_mmlu_eval(
+        model_path,
+        args.output_dir,
+        cfg,
+        args.checkpoint,
+        args.use_base_model,
+        args.use_teacher_model,
+        args.medical_only,
+        temp_model_dir,
+    )
     
     if results:
         print("\nMMLU Evaluation Results:")

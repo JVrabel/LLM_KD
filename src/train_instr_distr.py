@@ -61,16 +61,22 @@ class InstructionKDRecipe:
         self.total_epochs = cfg['epochs']
         self.max_steps_per_epoch = cfg['max_steps_per_epoch']
         self.global_step = 0
-        self.resume_from_checkpoint = cfg['resume_from_checkpoint']  # Required for Phase 2
+        self.resume_from_phase1_checkpoint = cfg.get('resume_from_phase1_checkpoint')
+        self.resume_from_phase2_checkpoint = cfg.get('resume_from_phase2_checkpoint')
         self.save_adapter_weights_only = cfg.get("save_adapter_weights_only", False)
         self.gradient_accumulation_steps = cfg['gradient_accumulation_steps']
         self.clip_grad_norm = cfg.get("clip_grad_norm", None)
         self.kd_ratio = cfg.get("kd_ratio", 0.5)
         self.ntp_only = cfg.get('ntp_only', False)
 
-        # Create a unique run directory based on timestamp
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.run_dir = os.path.join(self.output_dir, f"instruction_run_{timestamp}")
+        # Resume into the existing phase-2 run directory when continuing from
+        # an instruction checkpoint so checkpoints, plots, and samples stay together.
+        if self.resume_from_phase2_checkpoint:
+            self.run_dir = os.path.dirname(os.path.dirname(self.resume_from_phase2_checkpoint))
+        else:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.run_dir = os.path.join(self.output_dir, f"instruction_run_{timestamp}")
+
         os.makedirs(self.run_dir, exist_ok=True)
         self.eval_dir = os.path.join(self.run_dir, "evaluations")
         os.makedirs(self.eval_dir, exist_ok=True)
@@ -94,13 +100,24 @@ class InstructionKDRecipe:
         # Initialize wandb only on main process
         self.use_wandb = cfg.get('wandb', {}).get('enabled', False) and (rank is None or rank == 0)
         if self.use_wandb:
-            wandb.init(
-                project=cfg['wandb']['project'],
-                name=f"instruction_{cfg['wandb']['name']}" if cfg['wandb']['name'] else f"instruction_run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                config=cfg,
-                tags=cfg['wandb']['tags'] + ['instruction_tuning'],
-                notes=f"Instruction tuning phase - {cfg['wandb']['notes']}"
-            )
+            if cfg['wandb'].get('resume_id'):
+                wandb.init(
+                    project=cfg['wandb']['project'],
+                    name=f"instruction_{cfg['wandb']['name']}" if cfg['wandb']['name'] else f"instruction_run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    id=cfg['wandb']['resume_id'],
+                    resume="allow",
+                    config=cfg,
+                    tags=cfg['wandb']['tags'] + ['instruction_tuning'],
+                    notes=f"Instruction tuning phase - {cfg['wandb']['notes']}"
+                )
+            else:
+                wandb.init(
+                    project=cfg['wandb']['project'],
+                    name=f"instruction_{cfg['wandb']['name']}" if cfg['wandb']['name'] else f"instruction_run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    config=cfg,
+                    tags=cfg['wandb']['tags'] + ['instruction_tuning'],
+                    notes=f"Instruction tuning phase - {cfg['wandb']['notes']}"
+                )
 
     def _set_seed(self, seed):
         torch.manual_seed(seed)
@@ -111,18 +128,12 @@ class InstructionKDRecipe:
     def setup(self):
         # Get models from builder
         self.tokenizer, self.student_model, self.teacher_model = self.model_builder.setup()
-        
-        # Load student model from Phase 1 checkpoint
-        if self.resume_from_checkpoint:
-            print(f"Loading student model from Phase 1 checkpoint: {self.resume_from_checkpoint}")
-            self.load_student_checkpoint(self.resume_from_checkpoint)
-        else:
-            raise ValueError("Instruction tuning requires a checkpoint from Phase 1. Use --resume path/to/checkpoint.pt")
-        
+
         # Get loss functions
         self.ntp_loss_fn, self.kd_loss_fn = self.model_builder.get_loss_functions()
         
-        # Setup optimizer after loading checkpoint
+        # Setup optimizer before loading full checkpoints so optimizer/scheduler
+        # states can be restored if we are resuming phase 2.
         self.optimizer = torch.optim.AdamW(self.student_model.parameters(), lr=self.cfg['learning_rate'])
         
         # Setup data with instruction format
@@ -134,6 +145,18 @@ class InstructionKDRecipe:
 
         self.lr_scheduler = self._setup_lr_scheduler()
         self.scaler = torch.cuda.amp.GradScaler()
+
+        if self.resume_from_phase2_checkpoint:
+            print(f"Resuming Phase 2 checkpoint: {self.resume_from_phase2_checkpoint}")
+            self.load_checkpoint(self.resume_from_phase2_checkpoint)
+        elif self.resume_from_phase1_checkpoint:
+            print(f"Loading student model from Phase 1 checkpoint: {self.resume_from_phase1_checkpoint}")
+            self.load_student_checkpoint(self.resume_from_phase1_checkpoint)
+        else:
+            raise ValueError(
+                "Instruction tuning requires either a Phase 1 checkpoint "
+                "(--resume or --resume_phase1) or a Phase 2 checkpoint (--resume_phase2)."
+            )
 
     def load_student_checkpoint(self, checkpoint_path):
         """Load only the student model from Phase 1 checkpoint"""
@@ -173,6 +196,12 @@ class InstructionKDRecipe:
     def _loss_step(self, batch):
         # Same as original, but for instruction data
         batch = {k: v.to(self.device) for k, v in batch.items()}
+
+        # Ignore padded positions in both CE and KD losses.
+        labels = batch['labels'].clone()
+        attention_mask = batch['attention_mask']
+        labels[attention_mask == 0] = -100
+        batch['labels'] = labels
         
         if self.ntp_only:
             # NTP-only mode for instruction tuning
@@ -259,7 +288,7 @@ class InstructionKDRecipe:
         avg_loss = total_loss / total_steps
         avg_ntp_loss = total_ntp_loss / total_steps
         avg_kd_loss = total_kd_loss / total_steps
-        perplexity = torch.exp(torch.tensor(avg_loss)).item()
+        perplexity = torch.exp(torch.tensor(avg_ntp_loss)).item()
         
         print(f"Validation results: Loss: {avg_loss:.4f}, NTP Loss: {avg_ntp_loss:.4f}, "
               f"KD Loss: {avg_kd_loss:.4f}, Perplexity: {perplexity:.4f}")
@@ -284,52 +313,53 @@ class InstructionKDRecipe:
             
             # Get the base model if using DDP
             student_model = self.student_model.module if isinstance(self.student_model, DDP) else self.student_model
-            
-            # Find the first padding token to determine actual sequence length
-            # We'll use this as our prompt length
-            prompt_length = (attention_mask[0] == 1).sum().item()
-            
-            with torch.no_grad():
-                # Generate from student model
-                student_output = student_model.generate(
-                    input_ids=input_ids[:, :prompt_length],  # Use only the prompt part
-                    max_new_tokens=50,
-                    num_return_sequences=1,
-                    pad_token_id=self.tokenizer.pad_token_id,
-                    do_sample=True,
-                    temperature=0.7,
-                    top_p=0.9
-                )
-                
-                # Generate from teacher model
-                teacher_output = self.teacher_model.generate(
-                    input_ids=input_ids[:, :prompt_length],  # Use only the prompt part
-                    max_new_tokens=50,
-                    num_return_sequences=1,
-                    pad_token_id=self.tokenizer.pad_token_id,
-                    do_sample=True,
-                    temperature=0.7,
-                    top_p=0.9
-                )
-            
+
             samples = []
             for i in range(len(input_ids)):
-                # Get the prompt text
-                prompt = self.tokenizer.decode(input_ids[i][:prompt_length], skip_special_tokens=True)
-                
-                # Get the actual continuation (ground truth) - use labels to avoid padding
-                ground_truth_ids = labels[i][prompt_length:]
-                # Remove padding tokens from ground truth
-                ground_truth_ids = ground_truth_ids[ground_truth_ids != self.tokenizer.pad_token_id]
+                sequence_length = int(attention_mask[i].sum().item())
+                target_positions = torch.nonzero(labels[i] != -100, as_tuple=False).flatten()
+
+                if target_positions.numel() == 0:
+                    prompt_length = sequence_length
+                else:
+                    prompt_length = int(target_positions[0].item())
+
+                prompt_ids = input_ids[i][:prompt_length]
+                generation_input_ids = input_ids[i][:max(prompt_length, 1)].unsqueeze(0)
+
+                with torch.no_grad():
+                    student_output = student_model.generate(
+                        input_ids=generation_input_ids,
+                        max_new_tokens=50,
+                        num_return_sequences=1,
+                        pad_token_id=self.tokenizer.pad_token_id,
+                        do_sample=True,
+                        temperature=0.7,
+                        top_p=0.9
+                    )
+
+                    teacher_output = self.teacher_model.generate(
+                        input_ids=generation_input_ids,
+                        max_new_tokens=50,
+                        num_return_sequences=1,
+                        pad_token_id=self.tokenizer.pad_token_id,
+                        do_sample=True,
+                        temperature=0.7,
+                        top_p=0.9
+                    )
+
+                prompt = self.tokenizer.decode(prompt_ids, skip_special_tokens=True)
+
+                ground_truth_ids = input_ids[i][prompt_length:sequence_length]
                 ground_truth = self.tokenizer.decode(ground_truth_ids, skip_special_tokens=True)
-                
-                # Get model completions
+
+                generated_prompt_length = generation_input_ids.shape[1]
                 student_completion = self.tokenizer.decode(
-                    student_output[i][prompt_length:], 
+                    student_output[0][generated_prompt_length:],
                     skip_special_tokens=True
                 )
                 teacher_completion = self.tokenizer.decode(
-                    teacher_output[i][prompt_length:], 
+                    teacher_output[0][generated_prompt_length:],
                     skip_special_tokens=True
                 )
                 
@@ -529,6 +559,8 @@ class InstructionKDRecipe:
             'eval_losses': self.eval_losses,
             'train_ppls': self.train_ppls,
             'eval_ppls': self.eval_ppls,
+            'global_step': self.global_step,
+            'best_val_loss': self.best_val_loss,
             'wandb_run_id': wandb.run.id if self.use_wandb else None
         }
 
@@ -568,6 +600,8 @@ class InstructionKDRecipe:
         self.eval_losses = checkpoint.get('eval_losses', [])
         self.train_ppls = checkpoint.get('train_ppls', [])
         self.eval_ppls = checkpoint.get('eval_ppls', [])
+        self.global_step = checkpoint.get('global_step', 0)
+        self.best_val_loss = checkpoint.get('best_val_loss', float('inf'))
         
         if self.rank is None or self.rank == 0:  # Only print from main process
             print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
@@ -587,9 +621,17 @@ def main(rank=None, world_size=None):
     try:
         parser = argparse.ArgumentParser()
         parser.add_argument('--config', type=str, required=True, help='Path to instruction config file')
-        parser.add_argument('--resume', type=str, required=True, help='Path to Phase 1 checkpoint to continue from')
+        parser.add_argument('--resume', type=str, help='Backward-compatible alias for --resume_phase1')
+        parser.add_argument('--resume_phase1', type=str, help='Path to the Phase 1 checkpoint used to initialize instruction tuning')
+        parser.add_argument('--resume_phase2', type=str, help='Path to an existing Phase 2 checkpoint to continue training')
         parser.add_argument('--ntp_only', action='store_true', help='Run instruction tuning with only NTP loss')
         args = parser.parse_args()
+
+        resume_phase1 = args.resume_phase1 or args.resume
+        resume_phase2 = args.resume_phase2
+
+        if not resume_phase1 and not resume_phase2:
+            parser.error("Provide either --resume_phase1/--resume or --resume_phase2")
 
         # Load instruction config
         with open(args.config, 'r') as f:
@@ -617,7 +659,8 @@ def main(rank=None, world_size=None):
             'kd_ratio': yaml_cfg['training']['kd_ratio'],
             'seed': yaml_cfg['training']['seed'],
             'log_every_n_steps': yaml_cfg['training']['log_every_n_steps'],
-            'resume_from_checkpoint': args.resume,
+            'resume_from_phase1_checkpoint': resume_phase1,
+            'resume_from_phase2_checkpoint': resume_phase2,
             'eval_every': yaml_cfg['training']['eval_every'],
             'eval_steps': yaml_cfg['training']['eval_steps'],
             'save_checkpoint_every': yaml_cfg['checkpointing']['save_every_n_epochs'],
@@ -631,10 +674,18 @@ def main(rank=None, world_size=None):
             'is_instruction_tuning': True
         }
 
+        if resume_phase2:
+            checkpoint = torch.load(resume_phase2, map_location='cpu')
+            if checkpoint.get('wandb_run_id'):
+                cfg['wandb']['resume_id'] = checkpoint['wandb_run_id']
+
         print(f"CUDA available: {torch.cuda.is_available()}")
         print(f"Phase 2: Instruction Tuning")
         print(f"Teacher model: {cfg['model_name']}")
-        print(f"Resuming from: {args.resume}")
+        if resume_phase2:
+            print(f"Resuming Phase 2 from: {resume_phase2}")
+        else:
+            print(f"Initializing from Phase 1: {resume_phase1}")
 
         recipe = InstructionKDRecipe(cfg, rank=rank, world_size=world_size)
         recipe.setup()

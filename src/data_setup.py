@@ -44,29 +44,89 @@ class SlidingWindowDataset(Dataset):
         text = ' '.join(text.split())
         return text.strip()
 
+    def format_instruction_example(self, data):
+        """Normalize supported instruction formats into prompt/response text."""
+        eos_token = self.tokenizer.eos_token if self.tokenizer.eos_token else "</s>"
+
+        if isinstance(data, list) and len(data) >= 2:
+            prompt = self.clean_text(data[0])
+            response = self.clean_text(data[1])
+            return {
+                'prompt_text': f"{prompt}\n\nAnswer:",
+                'full_text': f"{prompt}\n\nAnswer: {response}{eos_token}"
+            }
+
+        if isinstance(data, dict):
+            if 'instruction' in data and 'output' in data:
+                instruction = self.clean_text(data['instruction'])
+                output = self.clean_text(data['output'])
+                input_text = self.clean_text(data.get('input', '')) if data.get('input') else ""
+
+                prompt_parts = [instruction]
+                if input_text:
+                    prompt_parts.append(f"Input: {input_text}")
+
+                prompt = "\n\n".join(part for part in prompt_parts if part)
+                return {
+                    'prompt_text': f"{prompt}\n\nAnswer:",
+                    'full_text': f"{prompt}\n\nAnswer: {output}{eos_token}"
+                }
+
+            if 'question' in data and 'answer' in data:
+                question = self.clean_text(data['question'])
+                answer = self.clean_text(data['answer'])
+                return {
+                    'prompt_text': f"{question}\n\nAnswer:",
+                    'full_text': f"{question}\n\nAnswer: {answer}{eos_token}"
+                }
+
+            if 'prompt' in data and 'response' in data:
+                prompt = self.clean_text(data['prompt'])
+                response = self.clean_text(data['response'])
+                return {
+                    'prompt_text': prompt,
+                    'full_text': f"{prompt}{response}{eos_token}"
+                }
+
+        return None
+
     def load_and_preprocess(self, file_path):
         texts = []
+        instruction_examples = []
         print("Loading and cleaning texts...")
         with open(file_path, 'r', encoding='utf-8') as f:
             for line in f:
                 data = json.loads(line)
                 
-                # Handle different data formats
-                if isinstance(data, list) and len(data) >= 2:
-                    # Q&A format: ["question text", "answer text"]
-                    question = self.clean_text(data[0])
-                    answer = self.clean_text(data[1])
-                    # Add EOS token after answer to teach the model when to stop
-                    eos_token = self.tokenizer.eos_token if self.tokenizer.eos_token else "</s>"
-                    cleaned_text = f"{question}\n\nAnswer: {answer}{eos_token}"
-                elif isinstance(data, dict) and 'text' in data:
-                    # Original format: {"text": "some text here"}
-                    cleaned_text = self.clean_text(data['text'])
-                else:
-                    print(f"Warning: Unknown data format: {data}")
+                if self.use_sliding_window:
+                    if isinstance(data, dict) and 'text' in data:
+                        cleaned_text = self.clean_text(data['text'])
+                        texts.append(cleaned_text)
+                    elif isinstance(data, list) and len(data) >= 2:
+                        formatted_example = self.format_instruction_example(data)
+                        texts.append(formatted_example['full_text'])
+                    elif isinstance(data, dict) and (
+                        ('instruction' in data and 'output' in data) or
+                        ('question' in data and 'answer' in data) or
+                        ('prompt' in data and 'response' in data)
+                    ):
+                        formatted_example = self.format_instruction_example(data)
+                        texts.append(formatted_example['full_text'])
+                    else:
+                        print(f"Warning: Unknown pretraining data format: {data}")
                     continue
-                
-                texts.append(cleaned_text)
+
+                formatted_example = self.format_instruction_example(data)
+                if formatted_example is not None:
+                    instruction_examples.append(formatted_example)
+                elif isinstance(data, dict) and 'text' in data:
+                    cleaned_text = self.clean_text(data['text'])
+                    instruction_examples.append({
+                        'prompt_text': "",
+                        'full_text': cleaned_text
+                    })
+                else:
+                    print(f"Warning: Unknown instruction data format: {data}")
         
         examples = []
         print("Tokenizing cleaned texts...")
@@ -94,23 +154,42 @@ class SlidingWindowDataset(Dataset):
                         'labels': input_ids.clone()
                     })
         else:
-            # No sliding window (for instruction tuning)
+            # No sliding window (for instruction tuning). Mask prompt tokens so
+            # the model is only supervised on the assistant response.
             print("Using single-example tokenization...")
-            for text in tqdm(texts):
+            for example in tqdm(instruction_examples):
+                prompt_text = example['prompt_text']
+                full_text = example['full_text']
+
+                prompt_ids = self.tokenizer(
+                    prompt_text,
+                    truncation=True,
+                    max_length=self.max_length,
+                    add_special_tokens=True,
+                    return_tensors='pt'
+                )['input_ids'].squeeze(0)
+
                 tokenized = self.tokenizer(
-                    text,
+                    full_text,
                     max_length=self.max_length,
                     truncation=True,
                     padding='max_length',
+                    add_special_tokens=True,
                     return_tensors='pt'
                 )
                 
                 input_ids = tokenized['input_ids'].squeeze(0)
                 attention_mask = tokenized['attention_mask'].squeeze(0)
+                labels = input_ids.clone()
+
+                prompt_length = min(prompt_ids.size(0), labels.size(0))
+                labels[:prompt_length] = -100
+                labels[attention_mask == 0] = -100
+
                 examples.append({
                     'input_ids': input_ids,
                     'attention_mask': attention_mask,
-                    'labels': input_ids.clone()
+                    'labels': labels
                 })
                 
         print(f"Created {len(examples)} examples.")
