@@ -10,6 +10,28 @@ import torch
 from datetime import datetime
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 
+
+def _find_lm_eval_output_json(expected_path: Path) -> Path | None:
+    """lm-eval-harness may not write exactly to --output_path.
+
+    Some versions append an ISO timestamp to the filename. This helper finds the
+    most likely JSON output to load.
+    """
+    if expected_path.is_file():
+        return expected_path
+
+    output_dir = expected_path.parent
+    if not output_dir.exists():
+        return None
+
+    # Common behavior: append suffix like _2026-03-31T14-16-51.516660.json
+    candidates = list(output_dir.glob(f"{expected_path.stem}_*.json"))
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0]
+
 def create_temp_model_dir(temp_dir=None):
     temp_root = Path(temp_dir) if temp_dir else Path(".")
     temp_root.mkdir(parents=True, exist_ok=True)
@@ -29,7 +51,7 @@ def load_model_info(checkpoint_path, cfg, use_base_model=False, use_teacher_mode
         )
         model.eval()
         print("Teacher model (full base) loaded successfully")
-        
+
     elif use_base_model:
         # Just use base model with student configuration
         model_config = AutoConfig.from_pretrained(cfg['model']['name'])
@@ -47,7 +69,7 @@ def load_model_info(checkpoint_path, cfg, use_base_model=False, use_teacher_mode
             # Match training: reduce num_hidden_layers and intermediate_size only
             model_config.num_hidden_layers = max(1, model_config.num_hidden_layers // factor)
             model_config.intermediate_size = max(1, model_config.intermediate_size // factor)
-        
+
         model = AutoModelForCausalLM.from_pretrained(
             cfg['model']['name'],
             config=model_config,
@@ -55,11 +77,11 @@ def load_model_info(checkpoint_path, cfg, use_base_model=False, use_teacher_mode
             trust_remote_code=True
         )
         print("Using base model with student configuration")
-        
+
     else:
         print(f"\nLoading checkpoint from: {checkpoint_path}")
         temp_model_path = create_temp_model_dir(temp_dir)
-        
+
         # Create model configuration (match training config exactly)
         model_config = AutoConfig.from_pretrained(cfg['model']['name'])
         if cfg['model']['student'].get('reduce_size', False):
@@ -68,7 +90,7 @@ def load_model_info(checkpoint_path, cfg, use_base_model=False, use_teacher_mode
             # Match training: reduce num_hidden_layers and intermediate_size only
             model_config.num_hidden_layers = max(1, model_config.num_hidden_layers // factor)
             model_config.intermediate_size = max(1, model_config.intermediate_size // factor)
-        
+
         # Load model with correct config
         model = AutoModelForCausalLM.from_pretrained(
             cfg['model']['name'],
@@ -76,40 +98,40 @@ def load_model_info(checkpoint_path, cfg, use_base_model=False, use_teacher_mode
             torch_dtype=torch.bfloat16,
             trust_remote_code=True
         )
-        
+
         # Load checkpoint
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
         if 'student_model_state_dict' not in checkpoint:
             raise ValueError("Checkpoint missing 'student_model_state_dict'")
-        
+
         state_dict = checkpoint['student_model_state_dict']
         print(f"Checkpoint contains {len(state_dict)} parameters")
-        
+
         # CRITICAL FIX: DON'T overwrite embeddings!
         # Just load the state dict as-is
         missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
-        
+
         if missing_keys:
             print(f"Missing keys: {missing_keys}")
         if unexpected_keys:
             print(f"Unexpected keys: {unexpected_keys}")
-        
+
         print("Model loaded successfully without corrupting embeddings")
-    
+
     # Save the model
     model.save_pretrained(temp_model_path)
-    
+
     # Save tokenizer
     tokenizer = AutoTokenizer.from_pretrained(cfg['model']['name'])
     tokenizer.save_pretrained(temp_model_path)
-    
+
     return str(temp_model_path.absolute()), str(temp_model_path.absolute())
 
 def create_model_identifier(cfg, checkpoint_path, use_base_model, use_teacher_model, medical_only):
     """Create a descriptive identifier for the model being evaluated"""
     # Extract base model name (remove path separators)
     base_model = cfg['model']['name'].replace('/', '_').replace('-', '_')
-    
+
     # Add model type info
     if use_teacher_model:
         model_type = "teacher"
@@ -119,29 +141,31 @@ def create_model_identifier(cfg, checkpoint_path, use_base_model, use_teacher_mo
         # Extract checkpoint name from path
         checkpoint_name = Path(checkpoint_path).stem if checkpoint_path else "unknown"
         model_type = f"checkpoint_{checkpoint_name}"
-    
+
     # Add evaluation scope
     eval_scope = "medical" if medical_only else "full"
-    
+
     # Add size reduction info if applicable (not for teacher model)
     size_info = ""
     if not use_teacher_model and cfg['model']['student'].get('reduce_size', False):
         factor = cfg['model']['student']['size_reduction_factor']
         size_info = f"_reduced_{factor}x"
-    
+
     # Create timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
+
     return f"{base_model}_{model_type}{size_info}_{eval_scope}_{timestamp}"
 
 def run_mmlu_eval(model_path, output_dir, cfg, checkpoint_path, use_base_model, use_teacher_model, medical_only=False, temp_model_dir=None):
     """Run MMLU evaluation using lm-evaluation-harness"""
+    output_dir = Path(output_dir).resolve()
+
     # Create descriptive filename
     model_id = create_model_identifier(cfg, checkpoint_path, use_base_model, use_teacher_model, medical_only)
     output_file = Path(output_dir) / f"mmlu_results_{model_id}.json"
-    
+
     print(f"Results will be saved as: {output_file}")
-    
+
     # Select tasks based on medical_only flag
     if medical_only:
         tasks = "mmlu_anatomy,mmlu_clinical_knowledge,mmlu_college_medicine,mmlu_medical_genetics,mmlu_professional_medicine"
@@ -149,7 +173,7 @@ def run_mmlu_eval(model_path, output_dir, cfg, checkpoint_path, use_base_model, 
     else:
         tasks = "mmlu"
         print("Running evaluation on all MMLU tasks")
-    
+
     # Construct the command
     cmd = [
         "accelerate", "launch", "-m", "lm_eval",
@@ -161,23 +185,23 @@ def run_mmlu_eval(model_path, output_dir, cfg, checkpoint_path, use_base_model, 
         "--batch_size", "auto",
         "--output_path", str(output_file)
     ]
-    
+
     print("\nRunning evaluation command:")
     print(" ".join(cmd))
-    
+
     try:
         # Run the evaluation
         subprocess.run(cmd, check=True)
-        
-        # Check if the file exists and is a file (not a directory)
-        if output_file.is_file():
-            with open(output_file, 'r') as f:
+
+        result_path = _find_lm_eval_output_json(output_file)
+        if result_path is not None and result_path.is_file():
+            with open(result_path, 'r') as f:
                 results = json.load(f)
-            
+
             # Add model metadata to results
             if 'config' not in results:
                 results['config'] = {}
-            
+
             results['model_metadata'] = {
                 'base_model': cfg['model']['name'],
                 'checkpoint_path': checkpoint_path if not (use_base_model or use_teacher_model) else None,
@@ -189,17 +213,22 @@ def run_mmlu_eval(model_path, output_dir, cfg, checkpoint_path, use_base_model, 
                 'size_reduced': cfg['model']['student'].get('reduce_size', False) if not use_teacher_model else False,
                 'size_reduction_factor': cfg['model']['student'].get('size_reduction_factor', None) if cfg['model']['student'].get('reduce_size', False) and not use_teacher_model else None
             }
-            
-            # Save updated results with metadata
-            with open(output_file, 'w') as f:
+
+            # Save updated results with metadata.
+            # Keep the original lm-eval output file, but also write a canonical copy
+            # at the expected path (without timestamp suffixes).
+            canonical_path = output_file
+            with open(canonical_path, 'w') as f:
                 json.dump(results, f, indent=2)
-            
-            print(f"\nResults saved to: {output_file}")
+
+            if result_path.resolve() != canonical_path.resolve():
+                print(f"\nLoaded lm-eval output from: {result_path}")
+            print(f"Results saved to: {canonical_path}")
             return results
         else:
             print(f"Warning: Results file not found at {output_file}")
             return None
-            
+
     except subprocess.CalledProcessError as e:
         print(f"Evaluation failed with error: {e}")
         return None
@@ -276,19 +305,19 @@ def main():
     parser.add_argument('--medical_only', action='store_true', help='Evaluate only medical MMLU tasks')
     parser.add_argument('--temp_dir', type=str, default=None, help='Directory for temporary exported models')
     args = parser.parse_args()
-    
+
     # Validation: only one model type can be selected
     model_flags = [args.use_base_model, args.use_teacher_model, bool(args.checkpoint)]
     if sum(model_flags) != 1:
         parser.error("Exactly one of --checkpoint, --use_base_model, or --use_teacher_model must be provided")
-    
+
     # Load config
     with open(args.config, 'r') as f:
         cfg = yaml.safe_load(f)
-    
+
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
-    
+
     # Get model info and run evaluation
     model_path, temp_model_dir = load_model_info(
         args.checkpoint,
@@ -307,7 +336,7 @@ def main():
         args.medical_only,
         temp_model_dir,
     )
-    
+
     if results:
         print("\nMMLU Evaluation Results:")
         print(f"Model: {results['model_metadata']['model_identifier']}")

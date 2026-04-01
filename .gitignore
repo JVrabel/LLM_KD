@@ -26,3 +26,6 @@ scraping.log
 models/
 gitignore.txt
 wandb/
+logs/
+.venv/
+src/outputs/

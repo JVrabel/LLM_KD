@@ -4,6 +4,7 @@ import json
 import os
 from tqdm import tqdm
 from torch.utils.data.distributed import DistributedSampler
+import torch.distributed as dist
 
 class SlidingWindowDataset(Dataset):
     def __init__(self, file_path, tokenizer, max_length, stride, use_sliding_window=True):
@@ -11,26 +12,57 @@ class SlidingWindowDataset(Dataset):
         self.max_length = max_length
         self.stride = stride
         self.use_sliding_window = use_sliding_window
-        
+        self.input_ids = None
+        self.attention_mask = None
+        self.examples = None
+
         # Create cache name that includes sliding window setting
         cache_suffix = "_sliding" if use_sliding_window else "_no_sliding"
-        cache_name = os.path.basename(file_path) + f".cache_{max_length}_{stride}{cache_suffix}_v2.pt"
+        # v3: compact tensor-based cache for sliding-window pretraining
+        cache_version = "v3" if use_sliding_window else "v2"
+        cache_name = os.path.basename(file_path) + f".cache_{max_length}_{stride}{cache_suffix}_{cache_version}.pt"
         self.cache_file = os.path.join(os.path.dirname(file_path), cache_name)
-        
+
+        # All ranks build their own cache (DDP-safe, but duplicated work/I/O).
+        is_ddp = dist.is_available() and dist.is_initialized()
+        rank = dist.get_rank() if is_ddp else 0
+
         if os.path.exists(self.cache_file):
             print(f"Loading cached dataset from {self.cache_file}")
-            self.examples = torch.load(self.cache_file)
+            self._load_cache(self.cache_file)
         else:
             # Delete old cache file if it exists
-            old_cache = os.path.join(os.path.dirname(file_path), 
-                                   os.path.basename(file_path) + f".cache_{max_length}_{stride}.pt")
+            old_cache = os.path.join(
+                os.path.dirname(file_path),
+                os.path.basename(file_path) + f".cache_{max_length}_{stride}.pt"
+            )
             if os.path.exists(old_cache):
                 print(f"Removing old cache file: {old_cache}")
                 os.remove(old_cache)
-            
-            self.examples = self.load_and_preprocess(file_path)
+
+            cache_obj = self.load_and_preprocess(file_path)
             print(f"Caching dataset to {self.cache_file}")
-            torch.save(self.examples, self.cache_file)
+            torch.save(cache_obj, self.cache_file)
+
+            if not os.path.exists(self.cache_file):
+                raise FileNotFoundError(f"Expected cache file not found after build: {self.cache_file}")
+            print(f"Loading cached dataset from {self.cache_file}")
+            self._load_cache(self.cache_file)
+
+    def _load_cache(self, cache_path):
+        cache_obj = torch.load(cache_path, map_location='cpu')
+
+        # New compact format for sliding-window: dict of tensors.
+        if isinstance(cache_obj, dict) and 'input_ids' in cache_obj and 'attention_mask' in cache_obj:
+            self.input_ids = cache_obj['input_ids']
+            self.attention_mask = cache_obj['attention_mask']
+            self.examples = None
+            return
+
+        # Backward compatibility: old format is a Python list of dicts.
+        self.examples = cache_obj
+        self.input_ids = None
+        self.attention_mask = None
 
     def clean_text(self, text):
         """Clean text before tokenization."""
@@ -97,7 +129,7 @@ class SlidingWindowDataset(Dataset):
         with open(file_path, 'r', encoding='utf-8') as f:
             for line in f:
                 data = json.loads(line)
-                
+
                 if self.use_sliding_window:
                     if isinstance(data, dict) and 'text' in data:
                         cleaned_text = self.clean_text(data['text'])
@@ -127,32 +159,36 @@ class SlidingWindowDataset(Dataset):
                     })
                 else:
                     print(f"Warning: Unknown instruction data format: {data}")
-        
+
         examples = []
         print("Tokenizing cleaned texts...")
-        
+
         if self.use_sliding_window:
             # Use sliding window (for pretraining)
             print("Using sliding window tokenization...")
+            input_id_chunks = []
+            attention_mask_chunks = []
             for text in tqdm(texts):
                 tokenized = self.tokenizer(
                     text,
-                    return_overflowing_tokens=True, 
+                    return_overflowing_tokens=True,
                     max_length=self.max_length,
                     stride=self.stride,
                     truncation=True,
                     padding='max_length',
                     return_tensors='pt'
                 )
-                
-                for i in range(len(tokenized['input_ids'])):
-                    input_ids = tokenized['input_ids'][i]
-                    attention_mask = tokenized['attention_mask'][i]
-                    examples.append({
-                        'input_ids': input_ids,
-                        'attention_mask': attention_mask,
-                        'labels': input_ids.clone()
-                    })
+                # Compact cache: store ids as int32, masks as uint8.
+                input_id_chunks.append(tokenized['input_ids'].to(torch.int32))
+                attention_mask_chunks.append(tokenized['attention_mask'].to(torch.uint8))
+
+            input_ids = torch.cat(input_id_chunks, dim=0)
+            attention_mask = torch.cat(attention_mask_chunks, dim=0)
+            print(f"Created {input_ids.size(0)} examples.")
+            return {
+                'input_ids': input_ids.contiguous(),
+                'attention_mask': attention_mask.contiguous()
+            }
         else:
             # No sliding window (for instruction tuning). Mask prompt tokens so
             # the model is only supervised on the assistant response.
@@ -177,7 +213,7 @@ class SlidingWindowDataset(Dataset):
                     add_special_tokens=True,
                     return_tensors='pt'
                 )
-                
+
                 input_ids = tokenized['input_ids'].squeeze(0)
                 attention_mask = tokenized['attention_mask'].squeeze(0)
                 labels = input_ids.clone()
@@ -191,15 +227,26 @@ class SlidingWindowDataset(Dataset):
                     'attention_mask': attention_mask,
                     'labels': labels
                 })
-                
+
         print(f"Created {len(examples)} examples.")
         return examples
 
     def __len__(self):
+        if self.use_sliding_window and self.input_ids is not None:
+            return self.input_ids.size(0)
         return len(self.examples)
 
     def __getitem__(self, idx):
-        # Use clone().detach() to avoid the warning about tensor construction
+        if self.use_sliding_window and self.input_ids is not None:
+            input_ids = self.input_ids[idx].to(torch.long)
+            attention_mask = self.attention_mask[idx].to(torch.long)
+            return {
+                'input_ids': input_ids,
+                'attention_mask': attention_mask,
+                'labels': input_ids.clone()
+            }
+
+        # Backward-compatible path for older cache formats
         return {
             'input_ids': self.examples[idx]['input_ids'].clone().detach(),
             'attention_mask': self.examples[idx]['attention_mask'].clone().detach(),
@@ -211,7 +258,7 @@ def collate_fn(batch):
     attention_mask = torch.stack([item['attention_mask'] for item in batch])
     labels = torch.stack([item['labels'] for item in batch])
     return {
-        'input_ids': input_ids, 
+        'input_ids': input_ids,
         'attention_mask': attention_mask,
         'labels': labels
     }
@@ -219,24 +266,24 @@ def collate_fn(batch):
 def setup_dataloaders(cfg, tokenizer, rank=None, world_size=None):
     # Check if this is instruction tuning (no sliding window for Q&A)
     use_sliding_window = not cfg.get('is_instruction_tuning', False)
-    
+
     dataset = SlidingWindowDataset(
-        cfg['data_path'], 
-        tokenizer, 
-        cfg['max_length'], 
+        cfg['data_path'],
+        tokenizer,
+        cfg['max_length'],
         cfg['stride'],
         use_sliding_window=use_sliding_window
     )
-    
+
     # Split into train (90%) and val (10%)
     total = len(dataset)
     train_size = int(0.9 * total)
     val_size = total - train_size
-    
+
     # Use a fixed seed for reproducibility
     generator = torch.Generator().manual_seed(cfg['seed'])
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
-    
+
     # Create samplers for distributed training
     train_sampler = DistributedSampler(
         train_dataset,
@@ -245,7 +292,7 @@ def setup_dataloaders(cfg, tokenizer, rank=None, world_size=None):
         shuffle=True,
         seed=cfg['seed']
     ) if rank is not None else None
-    
+
     val_sampler = DistributedSampler(
         val_dataset,
         num_replicas=world_size,
@@ -253,7 +300,7 @@ def setup_dataloaders(cfg, tokenizer, rank=None, world_size=None):
         shuffle=False,
         seed=cfg['seed']
     ) if rank is not None else None
-    
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=cfg['batch_size'],
@@ -263,7 +310,7 @@ def setup_dataloaders(cfg, tokenizer, rank=None, world_size=None):
         pin_memory=True,
         collate_fn=collate_fn
     )
-    
+
     val_loader = DataLoader(
         val_dataset,
         batch_size=cfg['batch_size'],
@@ -273,5 +320,5 @@ def setup_dataloaders(cfg, tokenizer, rank=None, world_size=None):
         pin_memory=True,
         collate_fn=collate_fn
     )
-    
+
     return train_loader, val_loader

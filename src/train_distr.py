@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader, random_split
-from transformers import (AutoTokenizer, AutoModelForCausalLM, AutoConfig, 
-                          BitsAndBytesConfig, LlamaConfig, LlamaForCausalLM, 
+from transformers import (AutoTokenizer, AutoModelForCausalLM, AutoConfig,
+                          BitsAndBytesConfig, LlamaConfig, LlamaForCausalLM,
                           get_linear_schedule_with_warmup)
 import json
 import os
@@ -28,10 +28,15 @@ mp.set_sharing_strategy('file_system')
 
 
 
-def ddp_setup(rank, world_size): 
+def ddp_setup(rank, world_size):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "12355"
-    init_process_group(backend="nccl", rank=rank, world_size=world_size)
+    init_process_group(
+        backend="nccl",
+        rank=rank,
+        world_size=world_size,
+        timeout=datetime.timedelta(hours=6)
+    )
 
 
 def ddp_cleanup():
@@ -47,18 +52,18 @@ class KDRecipe:
         self.world_size = world_size
         self.device = f'cuda:{rank}' if rank is not None else ('cuda' if torch.cuda.is_available() else 'cpu')
         self.dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
-        
+
         # Initialize model builder with rank
         self.model_builder = ModelBuilder(cfg, rank=rank)
         self.tokenizer = None
         self.student_model = None
         self.teacher_model = None
-        
+
         self.output_dir = cfg['output_dir']
         os.makedirs(self.output_dir, exist_ok=True)
         self.log_every_n_steps = cfg.get("log_every_n_steps", 1)
         self.log_peak_memory_stats = cfg.get("log_peak_memory_stats", False)
-        
+
         self.seed = self._set_seed(cfg['seed'])
         self.epochs_run = 0
         self.total_epochs = cfg['epochs']
@@ -101,7 +106,7 @@ class KDRecipe:
                 wandb_run_path = cfg['wandb'].get('resume_id')
                 if not wandb_run_path:
                     print("Warning: Resuming training but no wandb run_path provided. Creating new run.")
-                
+
                 wandb.init(
                     project=cfg['wandb']['project'],
                     name=cfg['wandb']['name'],
@@ -129,13 +134,13 @@ class KDRecipe:
     def setup(self):
         # Get models from builder (which now handles DDP wrapping)
         self.tokenizer, self.student_model, self.teacher_model = self.model_builder.setup()
-        
+
         # Get loss functions
         self.ntp_loss_fn, self.kd_loss_fn = self.model_builder.get_loss_functions()
-        
+
         # Setup optimizer after DDP wrapping
         self.optimizer = torch.optim.AdamW(self.student_model.parameters(), lr=self.cfg['learning_rate'])
-        
+
         # Setup data with DistributedSampler if using DDP
         self.train_loader, self.val_loader = self._setup_data()
 
@@ -150,7 +155,7 @@ class KDRecipe:
         if self.rank is not None:
             # Using DDP, create DistributedSampler
             train_loader, val_loader = setup_dataloaders(
-                self.cfg, 
+                self.cfg,
                 self.tokenizer,
                 rank=self.rank,
                 world_size=self.world_size
@@ -165,7 +170,7 @@ class KDRecipe:
         # These steps happen BEFORE the main training loop
         manual_warmup_steps = 2000 if not self.ntp_only else 0
         total_training_steps = self.total_epochs * self.steps_per_epoch + manual_warmup_steps
-        
+
         return get_linear_schedule_with_warmup(
             self.optimizer,
             num_warmup_steps=2000,
@@ -175,7 +180,7 @@ class KDRecipe:
     def _loss_step(self, batch):
         # Move batch to correct device
         batch = {k: v.to(self.device) for k, v in batch.items()}
-        
+
         # *** NEW: Mask padding tokens in labels ***
         # Set padding positions to -100 so they're ignored in loss
         labels = batch['labels'].clone()
@@ -184,7 +189,7 @@ class KDRecipe:
         # Update batch with masked labels
         batch['labels'] = labels
         # *** END NEW ***
-        
+
         if self.ntp_only:
             # NTP-only mode: only compute NTP loss
             student_outputs = self.student_model(
@@ -194,12 +199,12 @@ class KDRecipe:
             )
             student_logits = student_outputs.logits[..., :-1, :].contiguous()
             labels = batch['labels'][..., 1:].contiguous()
-            
+
             ntp_loss = self.ntp_loss_fn(
                 student_logits.view(-1, student_logits.size(-1)),
                 labels.view(-1)
             )
-            
+
             # Return NTP loss as main loss, zero KD loss
             return ntp_loss, ntp_loss, torch.tensor(0.0, device=ntp_loss.device)
         else:
@@ -211,23 +216,23 @@ class KDRecipe:
                     labels=batch['labels']
                 )
                 teacher_logits = teacher_outputs.logits[..., :-1, :].contiguous()
-            
+
             student_outputs = self.student_model(
                 input_ids=batch['input_ids'],
                 attention_mask=batch['attention_mask'],
                 labels=batch['labels']
             )
             student_logits = student_outputs.logits[..., :-1, :].contiguous()
-            
+
             # Get labels and shift them right
             labels = batch['labels'][..., 1:].contiguous()
-            
+
             # Calculate NTP loss (next token prediction)
             ntp_loss = self.ntp_loss_fn(
                 student_logits.view(-1, student_logits.size(-1)),
                 labels.view(-1)
             )
-            
+
             # Calculate KD loss (knowledge distillation)
             kd_loss = self.kd_loss_fn(
                 student_logits.view(-1, student_logits.size(-1)),
@@ -246,38 +251,38 @@ class KDRecipe:
         total_ntp_loss = 0
         total_kd_loss = 0
         total_steps = 0
-        
+
         # If steps is None, use the full dataset
         max_steps = steps if steps is not None else len(dataloader)
-        
+
         progress_bar = tqdm(enumerate(dataloader), total=max_steps, desc=desc)
-        
+
         with torch.no_grad():
             for step, batch in progress_bar:
                 if step >= max_steps:
                     break
-                
+
                 with torch.cuda.amp.autocast():
                     loss, ntp_loss, kd_loss = self._loss_step(batch)
-                
+
                 total_loss += loss.item()
                 total_ntp_loss += ntp_loss.item()
                 total_kd_loss += kd_loss.item()
                 total_steps += 1
-                
+
                 # Update progress bar without showing intermediate losses
                 progress_bar.set_postfix({'steps': f"{step+1}/{max_steps}"})
-        
+
         # Calculate averages
         avg_loss = total_loss / total_steps
         avg_ntp_loss = total_ntp_loss / total_steps
         avg_kd_loss = total_kd_loss / total_steps
         # For perplexity, use NTP loss only (cross-entropy)
         perplexity = torch.exp(torch.tensor(avg_ntp_loss)).item()
-        
+
         print(f"Validation results: Loss: {avg_loss:.4f}, NTP Loss: {avg_ntp_loss:.4f}, "
               f"KD Loss: {avg_kd_loss:.4f}, Perplexity: {perplexity:.4f}")
-        
+
         self.student_model.train()
         return {
             'loss': avg_loss,
@@ -289,81 +294,80 @@ class KDRecipe:
     def generate_samples(self, batch):
         # Only generate samples on the main process (rank 0)
         if self.rank is not None and self.rank != 0:
-            return None
-        
+            return []
+
         try:
             input_ids = batch['input_ids'].to(self.device)[:2]  # Take only first 2 examples
             attention_mask = batch['attention_mask'].to(self.device)[:2]
-            labels = batch['labels'].to(self.device)[:2]  # Make sure to get labels
-            
+
             # Get the base model if using DDP
             student_model = self.student_model.module if isinstance(self.student_model, DDP) else self.student_model
-            
-            # Find the first padding token to determine actual sequence length
-            # We'll use this as our prompt length
-            prompt_length = (attention_mask[0] == 1).sum().item()
-            
-            with torch.no_grad():
-                # Generate from student model
-                student_output = student_model.generate(
-                    input_ids=input_ids[:, :prompt_length],  # Use only the prompt part
-                    max_new_tokens=50,
-                    num_return_sequences=1,
-                    pad_token_id=self.tokenizer.pad_token_id,
-                    do_sample=True,
-                    temperature=0.7,
-                    top_p=0.9
-                )
-                
-                # Generate from teacher model
-                teacher_output = self.teacher_model.generate(
-                    input_ids=input_ids[:, :prompt_length],  # Use only the prompt part
-                    max_new_tokens=50,
-                    num_return_sequences=1,
-                    pad_token_id=self.tokenizer.pad_token_id,
-                    do_sample=True,
-                    temperature=0.7,
-                    top_p=0.9
-                )
-            
+
             samples = []
             for i in range(len(input_ids)):
-                # Get the prompt text
-                prompt = self.tokenizer.decode(input_ids[i][:prompt_length], skip_special_tokens=True)
-                
-                # Get the actual continuation (ground truth) - use labels to avoid padding
-                ground_truth_ids = labels[i][prompt_length:]
-                # Remove padding tokens from ground truth
-                ground_truth_ids = ground_truth_ids[ground_truth_ids != self.tokenizer.pad_token_id]
+                sequence_length = int(attention_mask[i].sum().item())
+                if sequence_length <= 1:
+                    continue
+
+                # For sliding-window LM data there isn't a true prompt/answer boundary.
+                # Create a stable, readable split for logging: first half as "prompt",
+                # second half as "ground truth".
+                prompt_length = max(1, min(sequence_length - 1, sequence_length // 2))
+
+                prompt_ids = input_ids[i][:prompt_length]
+                generation_input_ids = prompt_ids.unsqueeze(0)
+
+                with torch.no_grad():
+                    student_output = student_model.generate(
+                        input_ids=generation_input_ids,
+                        max_new_tokens=50,
+                        num_return_sequences=1,
+                        pad_token_id=self.tokenizer.pad_token_id,
+                        do_sample=True,
+                        temperature=0.7,
+                        top_p=0.9,
+                    )
+
+                    teacher_output = self.teacher_model.generate(
+                        input_ids=generation_input_ids,
+                        max_new_tokens=50,
+                        num_return_sequences=1,
+                        pad_token_id=self.tokenizer.pad_token_id,
+                        do_sample=True,
+                        temperature=0.7,
+                        top_p=0.9,
+                    )
+
+                prompt = self.tokenizer.decode(prompt_ids, skip_special_tokens=True)
+                ground_truth_ids = input_ids[i][prompt_length:sequence_length]
                 ground_truth = self.tokenizer.decode(ground_truth_ids, skip_special_tokens=True)
-                
-                # Get model completions
+
+                generated_prompt_length = generation_input_ids.shape[1]
                 student_completion = self.tokenizer.decode(
-                    student_output[i][prompt_length:], 
-                    skip_special_tokens=True
+                    student_output[0][generated_prompt_length:],
+                    skip_special_tokens=True,
                 )
                 teacher_completion = self.tokenizer.decode(
-                    teacher_output[i][prompt_length:], 
-                    skip_special_tokens=True
+                    teacher_output[0][generated_prompt_length:],
+                    skip_special_tokens=True,
                 )
-                
+
                 samples.append({
                     'prompt': prompt,
                     'student_completion': student_completion,
                     'teacher_completion': teacher_completion,
-                    'ground_truth': ground_truth
+                    'ground_truth': ground_truth,
                 })
-                
-                # Print samples for debugging
+
                 if i == 0:  # Print first sample
                     print("\nSample generation:")
                     print(f"Prompt: {prompt[:100]}...")
                     print(f"Ground Truth: {ground_truth[:100]}...")
                     print(f"Student: {student_completion[:100]}...")
                     print(f"Teacher: {teacher_completion[:100]}...")
-            
+
             return samples
-            
+
         except Exception as e:
             print(f"Error in generate_samples: {str(e)}")
             import traceback
@@ -374,19 +378,19 @@ class KDRecipe:
         # Phase 1: NTP warmup (only if not in ntp_only mode)
         if not self.ntp_only:
             print("Starting Phase 1: NTP Training with Warmup (2000 steps)")
-            
+
             # Temporarily set to NTP-only mode for warmup
             original_ntp_only = self.ntp_only
             self.ntp_only = True
-            
+
             # Run 2000 steps of NTP training
             warmup_steps_done = 0
             warmup_target_steps = 2000
-            
+
             while warmup_steps_done < warmup_target_steps:
                 if isinstance(self.train_loader.sampler, DistributedSampler):
                     self.train_loader.sampler.set_epoch(self.epochs_run)
-                
+
                 for step, batch in enumerate(self.train_loader):
                     if warmup_steps_done >= warmup_target_steps:
                         break
@@ -401,7 +405,7 @@ class KDRecipe:
                         if self.clip_grad_norm is not None:
                             self.scaler.unscale_(self.optimizer)
                             clip_grad_norm_(self.student_model.parameters(), self.clip_grad_norm)
-                        
+
                         self.scaler.step(self.optimizer)
                         self.scaler.update()
                         self.optimizer.zero_grad(set_to_none=True)
@@ -431,8 +435,10 @@ class KDRecipe:
                                 'train/learning_rate': self.lr_scheduler.get_last_lr()[0],
                                 'train/step': self.global_step,
                             })
-                
-                self.epochs_run += 1
+
+                        # Note: warmup is measured in optimizer steps, not epochs.
+                        # Do not advance epochs_run here, otherwise `epochs: 1` would
+                        # complete warmup and then skip the main KD epoch loop.
 
             # Restore original mode for main training
             self.ntp_only = original_ntp_only
@@ -444,17 +450,17 @@ class KDRecipe:
             # Set epoch for distributed sampler
             if isinstance(self.train_loader.sampler, DistributedSampler):
                 self.train_loader.sampler.set_epoch(epoch)
-            
+
             self.student_model.train()
             total_loss = 0
             total_ntp_loss = 0
             total_kd_loss = 0
             logged_steps = 0
-            
+
             desc = "NTP Training" if self.ntp_only else "KD Training"
-            progress_bar = tqdm(enumerate(self.train_loader), total=len(self.train_loader), 
+            progress_bar = tqdm(enumerate(self.train_loader), total=len(self.train_loader),
                               desc=f"{desc} Epoch {epoch}", leave=True)
-            
+
             for step, batch in progress_bar:
                 if step // self.gradient_accumulation_steps == self.max_steps_per_epoch:
                     break
@@ -471,7 +477,7 @@ class KDRecipe:
                     if self.clip_grad_norm is not None:
                         self.scaler.unscale_(self.optimizer)
                         clip_grad_norm_(self.student_model.parameters(), self.clip_grad_norm)
-                    
+
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
                     self.optimizer.zero_grad(set_to_none=True)
@@ -504,7 +510,7 @@ class KDRecipe:
                         print(f"\nStep {self.global_step}: Running validation...")
                         val_metrics = self.evaluate(self.val_loader, steps=self.eval_steps)
                         print(f"Validation loss: {val_metrics['loss']:.4f}, Perplexity: {val_metrics['perplexity']:.4f}")
-                        
+
                         if self.use_wandb:
                             wandb.log({
                                 'val/loss': val_metrics['loss'],
@@ -518,17 +524,20 @@ class KDRecipe:
                     if self.global_step % self.cfg['wandb']['generate_every_n_steps'] == 0:
                         print(f"\nStep {self.global_step}: Generating samples...")
                         samples = self.generate_samples(batch)
-                        
+
+                        if not samples:
+                            continue
+
                         # Save locally
                         self.save_samples(samples, epoch, self.global_step)
-                        
+
                         # Log to wandb if enabled
                         if self.use_wandb:
                             # Create a wandb.Table for the samples
                             samples_table = wandb.Table(
                                 columns=["step", "prompt", "student_completion", "teacher_completion", "ground_truth"],
                                 data=[
-                                    [self.global_step, s['prompt'], s['student_completion'], 
+                                    [self.global_step, s['prompt'], s['student_completion'],
                                      s['teacher_completion'], s['ground_truth']] for s in samples
                                 ]
                             )
@@ -555,7 +564,7 @@ class KDRecipe:
             # End of epoch full validation
             print("\nRunning full validation...")
             val_metrics = self.evaluate(self.val_loader)
-            
+
             # Log metrics
             if self.use_wandb:
                 wandb.log({
@@ -568,22 +577,22 @@ class KDRecipe:
                     'val/perplexity': val_metrics['perplexity'],
                     'epoch': epoch
                 })
-            
+
             # Save best model based on validation loss
             if val_metrics['loss'] < self.best_val_loss:
                 self.best_val_loss = val_metrics['loss']
                 self.save_checkpoint(epoch, total_loss / logged_steps, val_metrics['loss'], is_best=True)
                 print(f"New best validation loss: {val_metrics['loss']:.4f}")
-            
+
             # Regular checkpoint saving
             if (epoch + 1) % self.save_checkpoint_every == 0:
                 self.save_checkpoint(epoch, total_loss / logged_steps, val_metrics['loss'])
-            
+
             print(f"Epoch {epoch+1} metrics:")
             print(f"Train Loss: {total_loss/logged_steps:.4f}")
             print(f"Val Loss: {val_metrics['loss']:.4f}")
             print(f"Val Perplexity: {val_metrics['perplexity']:.4f}")
-            
+
             self.epochs_run += 1
 
     def _log_metrics(self, loss, ntp_loss, kd_loss, lr):
@@ -622,8 +631,8 @@ class KDRecipe:
         checkpoint = {
             'epoch': epoch,
             # Use .module to get the underlying model if using DDP
-            'student_model_state_dict': self.student_model.module.state_dict() 
-                if hasattr(self.student_model, 'module') 
+            'student_model_state_dict': self.student_model.module.state_dict()
+                if hasattr(self.student_model, 'module')
                 else self.student_model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'lr_scheduler_state_dict': self.lr_scheduler.state_dict(),
@@ -640,12 +649,12 @@ class KDRecipe:
             checkpoint_path = os.path.join(self.checkpoint_dir, "best_model.pt")
         else:
             checkpoint_path = os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pt")
-        
+
         torch.save(checkpoint, checkpoint_path)
-        
+
         if self.rank is None or self.rank == 0:  # Only print from main process
             print(f"Saved checkpoint to {checkpoint_path}")
-        
+
         if not is_best:
             # Keep only the N most recent checkpoints
             checkpoints = sorted([f for f in os.listdir(self.checkpoint_dir) if f.startswith("checkpoint")])
@@ -655,16 +664,16 @@ class KDRecipe:
     def load_checkpoint(self, checkpoint_path):
         if not os.path.exists(checkpoint_path):
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-            
+
         # Load checkpoint to CPU first to avoid GPU RAM issues
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
-        
+
         # Load state dict into model (handle DDP case)
         if hasattr(self.student_model, 'module'):
             self.student_model.module.load_state_dict(checkpoint['student_model_state_dict'])
         else:
             self.student_model.load_state_dict(checkpoint['student_model_state_dict'])
-            
+
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
         self.epochs_run = checkpoint['epoch'] + 1
@@ -672,13 +681,13 @@ class KDRecipe:
         self.eval_losses = checkpoint.get('eval_losses', [])
         self.train_ppls = checkpoint.get('train_ppls', [])
         self.eval_ppls = checkpoint.get('eval_ppls', [])
-        
+
         # Update wandb run ID in config if available
         if 'wandb_run_id' in checkpoint and checkpoint['wandb_run_id']:
             if 'wandb' not in self.cfg:
                 self.cfg['wandb'] = {}
             self.cfg['wandb']['resume_id'] = checkpoint['wandb_run_id']
-        
+
         if self.rank is None or self.rank == 0:  # Only print from main process
             print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
 
@@ -711,7 +720,7 @@ def main(rank=None, world_size=None):
         # Load config
         with open(args.config, 'r') as f:
             yaml_cfg = yaml.safe_load(f)
-        
+
         # Convert nested yaml config to flat dictionary
         cfg = {
             'model_name': yaml_cfg['model']['name'],
@@ -751,7 +760,7 @@ def main(rank=None, world_size=None):
 
         recipe = KDRecipe(cfg, rank=rank, world_size=world_size)
         recipe.setup()
-        
+
         if cfg['resume_from_checkpoint']:
             checkpoint_path = cfg['resume_from_checkpoint']
             if not os.path.exists(checkpoint_path):
@@ -772,6 +781,7 @@ def main(rank=None, world_size=None):
 if __name__ == "__main__":
     # Check if using multiple GPUs
     n_gpus = torch.cuda.device_count()
+    n_gpus = 1
     if n_gpus > 1:
         mp.spawn(
             main,

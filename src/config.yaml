@@ -11,20 +11,20 @@ data:
     # - path: "data/gutenwiki_gut_fine_plato/train/merged_clean_output.jsonl"
     # - path: "data/gutenberg/train/bookshelf_57_train.jsonl"
   max_length: 512
-  stride: 380
+  stride: 128
   batch_size: 8
 
 training:
   learning_rate: 1.0e-4
-  epochs: 100
+  epochs: 1
   max_steps_per_epoch: null
   gradient_accumulation_steps: 4
   clip_grad_norm: 1.0
   kd_ratio: 1.0
   seed: 42
   log_every_n_steps: 100
-  eval_every: 200
-  eval_steps: 200
+  eval_every: 1000
+  eval_steps: 100
 
   # --- New KD Loss Configuration ---
   kd_loss_type: "kl_div"  # Options: "mse" or "kl_div"
@@ -33,7 +33,7 @@ training:
 
 checkpointing:
   save_every_n_epochs: 1
-  keep_n_checkpoints: 1
+  keep_n_checkpoints: 5
   resume: null
 
 output:
