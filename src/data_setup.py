@@ -1,29 +1,46 @@
-import torch
-from torch.utils.data import Dataset, DataLoader, random_split
+import hashlib
 import json
 import os
-from tqdm import tqdm
-from torch.utils.data.distributed import DistributedSampler
+
+import torch
 import torch.distributed as dist
+from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.distributed import DistributedSampler
+from tqdm import tqdm
 
 class SlidingWindowDataset(Dataset):
-    def __init__(self, file_path, tokenizer, max_length, stride, use_sliding_window=True):
+    def __init__(
+        self,
+        file_path,
+        tokenizer,
+        max_length,
+        stride,
+        use_sliding_window=True,
+        selected_line_indices=None,
+        split_name="all",
+        cache_tag=None,
+    ):
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.stride = stride
         self.use_sliding_window = use_sliding_window
+        self.selected_line_indices = selected_line_indices
+        self.selected_line_index_set = set(selected_line_indices) if selected_line_indices is not None else None
         self.input_ids = None
         self.attention_mask = None
         self.examples = None
 
         # Create cache name that includes sliding window setting
         cache_suffix = "_sliding" if use_sliding_window else "_no_sliding"
-        # v3: compact tensor-based cache for sliding-window pretraining
-        cache_version = "v3" if use_sliding_window else "v2"
-        cache_name = os.path.basename(file_path) + f".cache_{max_length}_{stride}{cache_suffix}_{cache_version}.pt"
+        # v4: split-aware cache for pre-split train/val datasets
+        cache_version = "v4" if use_sliding_window else "v3"
+        split_descriptor = self._build_split_descriptor(split_name, cache_tag)
+        cache_name = (
+            os.path.basename(file_path)
+            + f".cache_{max_length}_{stride}{cache_suffix}_{cache_version}_{split_descriptor}.pt"
+        )
         self.cache_file = os.path.join(os.path.dirname(file_path), cache_name)
 
-        # All ranks build their own cache (DDP-safe, but duplicated work/I/O).
         is_ddp = dist.is_available() and dist.is_initialized()
         rank = dist.get_rank() if is_ddp else 0
 
@@ -31,23 +48,39 @@ class SlidingWindowDataset(Dataset):
             print(f"Loading cached dataset from {self.cache_file}")
             self._load_cache(self.cache_file)
         else:
-            # Delete old cache file if it exists
-            old_cache = os.path.join(
-                os.path.dirname(file_path),
-                os.path.basename(file_path) + f".cache_{max_length}_{stride}.pt"
-            )
-            if os.path.exists(old_cache):
-                print(f"Removing old cache file: {old_cache}")
-                os.remove(old_cache)
+            if is_ddp:
+                if rank == 0:
+                    self._build_cache(file_path)
+                dist.barrier()
+                if not os.path.exists(self.cache_file):
+                    raise FileNotFoundError(f"Expected cache file not found after build: {self.cache_file}")
+                print(f"Loading cached dataset from {self.cache_file}")
+                self._load_cache(self.cache_file)
+            else:
+                self._build_cache(file_path)
 
-            cache_obj = self.load_and_preprocess(file_path)
-            print(f"Caching dataset to {self.cache_file}")
-            torch.save(cache_obj, self.cache_file)
+    def _build_split_descriptor(self, split_name, cache_tag):
+        if self.selected_line_indices is None:
+            base_descriptor = split_name
+        else:
+            indices_blob = ",".join(str(idx) for idx in self.selected_line_indices)
+            indices_hash = hashlib.sha1(indices_blob.encode("utf-8")).hexdigest()[:10]
+            base_descriptor = f"{split_name}_{len(self.selected_line_indices)}_{indices_hash}"
 
-            if not os.path.exists(self.cache_file):
-                raise FileNotFoundError(f"Expected cache file not found after build: {self.cache_file}")
-            print(f"Loading cached dataset from {self.cache_file}")
-            self._load_cache(self.cache_file)
+        if cache_tag:
+            safe_tag = str(cache_tag).replace(os.sep, "_").replace(" ", "_")
+            return f"{base_descriptor}_{safe_tag}"
+        return base_descriptor
+
+    def _build_cache(self, file_path):
+        cache_obj = self.load_and_preprocess(file_path)
+        print(f"Caching dataset to {self.cache_file}")
+        torch.save(cache_obj, self.cache_file)
+
+        if not os.path.exists(self.cache_file):
+            raise FileNotFoundError(f"Expected cache file not found after build: {self.cache_file}")
+        print(f"Loading cached dataset from {self.cache_file}")
+        self._load_cache(self.cache_file)
 
     def _load_cache(self, cache_path):
         cache_obj = torch.load(cache_path, map_location='cpu')
@@ -127,7 +160,9 @@ class SlidingWindowDataset(Dataset):
         instruction_examples = []
         print("Loading and cleaning texts...")
         with open(file_path, 'r', encoding='utf-8') as f:
-            for line in f:
+            for line_idx, line in enumerate(f):
+                if self.selected_line_index_set is not None and line_idx not in self.selected_line_index_set:
+                    continue
                 data = json.loads(line)
 
                 if self.use_sliding_window:
@@ -168,12 +203,21 @@ class SlidingWindowDataset(Dataset):
             print("Using sliding window tokenization...")
             input_id_chunks = []
             attention_mask_chunks = []
+            special_tokens = self.tokenizer.num_special_tokens_to_add(pair=False)
+            effective_max_length = max(1, self.max_length - special_tokens)
+            max_valid_stride = max(0, effective_max_length - 1)
+            tokenization_stride = min(self.stride, max_valid_stride)
+            if tokenization_stride != self.stride:
+                print(
+                    f"Requested stride {self.stride} is too large for max_length={self.max_length} "
+                    f"with {special_tokens} added special tokens. Clamping stride to {tokenization_stride}."
+                )
             for text in tqdm(texts):
                 tokenized = self.tokenizer(
                     text,
                     return_overflowing_tokens=True,
                     max_length=self.max_length,
-                    stride=self.stride,
+                    stride=tokenization_stride,
                     truncation=True,
                     padding='max_length',
                     return_tensors='pt'
@@ -263,26 +307,51 @@ def collate_fn(batch):
         'labels': labels
     }
 
+def _compute_split_indices(file_path, seed, val_split_ratio):
+    with open(file_path, 'r', encoding='utf-8') as f:
+        total_records = sum(1 for line in f if line.strip())
+
+    if total_records < 2:
+        raise ValueError("Need at least two JSONL records to create train/validation splits.")
+
+    generator = torch.Generator().manual_seed(seed)
+    shuffled_indices = torch.randperm(total_records, generator=generator).tolist()
+    val_size = int(round(total_records * val_split_ratio))
+    val_size = min(max(1, val_size), total_records - 1)
+
+    val_indices = sorted(shuffled_indices[:val_size])
+    train_indices = sorted(shuffled_indices[val_size:])
+    return train_indices, val_indices
+
+
 def setup_dataloaders(cfg, tokenizer, rank=None, world_size=None):
     # Check if this is instruction tuning (no sliding window for Q&A)
     use_sliding_window = not cfg.get('is_instruction_tuning', False)
+    val_split_ratio = cfg.get('val_split_ratio', 0.1)
+    val_stride = cfg.get('val_stride') or cfg['stride']
+    train_indices, val_indices = _compute_split_indices(cfg['data_path'], cfg['seed'], val_split_ratio)
+    cache_tag = f"seed{cfg['seed']}_val{val_split_ratio:.3f}"
 
-    dataset = SlidingWindowDataset(
+    train_dataset = SlidingWindowDataset(
         cfg['data_path'],
         tokenizer,
         cfg['max_length'],
         cfg['stride'],
-        use_sliding_window=use_sliding_window
+        use_sliding_window=use_sliding_window,
+        selected_line_indices=train_indices,
+        split_name="train",
+        cache_tag=cache_tag,
     )
-
-    # Split into train (90%) and val (10%)
-    total = len(dataset)
-    train_size = int(0.9 * total)
-    val_size = total - train_size
-
-    # Use a fixed seed for reproducibility
-    generator = torch.Generator().manual_seed(cfg['seed'])
-    train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
+    val_dataset = SlidingWindowDataset(
+        cfg['data_path'],
+        tokenizer,
+        cfg['max_length'],
+        val_stride,
+        use_sliding_window=use_sliding_window,
+        selected_line_indices=val_indices,
+        split_name="val",
+        cache_tag=cache_tag,
+    )
 
     # Create samplers for distributed training
     train_sampler = DistributedSampler(

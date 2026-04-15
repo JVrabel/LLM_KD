@@ -23,6 +23,7 @@ import torch.multiprocessing as mp
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
+import torch.distributed as dist
 import torch.multiprocessing as mp
 mp.set_sharing_strategy('file_system')
 
@@ -61,7 +62,7 @@ class KDRecipe:
 
         self.output_dir = cfg['output_dir']
         os.makedirs(self.output_dir, exist_ok=True)
-        self.log_every_n_steps = cfg.get("log_every_n_steps", 1)
+        self.log_every_n_steps = max(1, cfg.get("log_every_n_steps", 1))
         self.log_peak_memory_stats = cfg.get("log_peak_memory_stats", False)
 
         self.seed = self._set_seed(cfg['seed'])
@@ -75,6 +76,19 @@ class KDRecipe:
         self.clip_grad_norm = cfg.get("clip_grad_norm", None)
         self.kd_ratio = cfg.get("kd_ratio", 0.5)
         self.ntp_only = cfg.get('ntp_only', False)
+        self.lr_warmup_steps = cfg.get('warmup_steps', 2000)
+        configured_manual_warmup_steps = cfg.get('manual_warmup_steps')
+        self.manual_warmup_steps = 0 if self.ntp_only else (
+            self.lr_warmup_steps if configured_manual_warmup_steps is None else configured_manual_warmup_steps
+        )
+        self.primary_val_metric = cfg.get('primary_val_metric', 'ntp_loss')
+        self.generation_cfg = cfg.get('generation', {})
+        self.generate_every_n_steps = self.generation_cfg.get(
+            'every_n_steps',
+            cfg.get('wandb', {}).get('generate_every_n_steps', 500),
+        )
+        self.sample_num_examples = self.generation_cfg.get('sample_num_examples', 2)
+        self.best_val_metric = float('inf')
 
         # Create a unique run directory based on timestamp
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -97,7 +111,6 @@ class KDRecipe:
 
         self.save_checkpoint_every = cfg.get('save_checkpoint_every', 5)
         self.keep_n_checkpoints = cfg.get('keep_n_checkpoints', 3)
-        self.best_val_loss = float('inf')
 
         # Initialize wandb only on main process
         self.use_wandb = cfg.get('wandb', {}).get('enabled', False) and (rank is None or rank == 0)
@@ -166,16 +179,38 @@ class KDRecipe:
         return train_loader, val_loader
 
     def _setup_lr_scheduler(self):
-        # Account for the 2000 manual NTP warmup steps
-        # These steps happen BEFORE the main training loop
-        manual_warmup_steps = 2000 if not self.ntp_only else 0
-        total_training_steps = self.total_epochs * self.steps_per_epoch + manual_warmup_steps
+        total_training_steps = self.total_epochs * self.steps_per_epoch + self.manual_warmup_steps
 
         return get_linear_schedule_with_warmup(
             self.optimizer,
-            num_warmup_steps=2000,
+            num_warmup_steps=self.lr_warmup_steps,
             num_training_steps=total_training_steps
         )
+
+    def _get_primary_metric_value(self, metrics):
+        if self.primary_val_metric not in metrics:
+            available_metrics = ", ".join(sorted(metrics.keys()))
+            raise ValueError(
+                f"Unknown primary validation metric '{self.primary_val_metric}'. "
+                f"Available metrics: {available_metrics}"
+            )
+        return metrics[self.primary_val_metric]
+
+    def _collate_examples(self, examples):
+        return {
+            'input_ids': torch.stack([example['input_ids'] for example in examples]),
+            'attention_mask': torch.stack([example['attention_mask'] for example in examples]),
+            'labels': torch.stack([example['labels'] for example in examples]),
+        }
+
+    def _get_fixed_sample_batch(self):
+        dataset = self.val_loader.dataset
+        if len(dataset) == 0:
+            return None
+
+        sample_count = min(self.sample_num_examples, len(dataset))
+        examples = [dataset[idx] for idx in range(sample_count)]
+        return self._collate_examples(examples)
 
     def _loss_step(self, batch):
         # Move batch to correct device
@@ -273,6 +308,15 @@ class KDRecipe:
                 # Update progress bar without showing intermediate losses
                 progress_bar.set_postfix({'steps': f"{step+1}/{max_steps}"})
 
+        if dist.is_available() and dist.is_initialized():
+            totals = torch.tensor(
+                [total_loss, total_ntp_loss, total_kd_loss, total_steps],
+                device=self.device,
+                dtype=torch.float64,
+            )
+            dist.all_reduce(totals, op=dist.ReduceOp.SUM)
+            total_loss, total_ntp_loss, total_kd_loss, total_steps = totals.tolist()
+
         # Calculate averages
         avg_loss = total_loss / total_steps
         avg_ntp_loss = total_ntp_loss / total_steps
@@ -291,82 +335,98 @@ class KDRecipe:
             'perplexity': perplexity
         }
 
-    def generate_samples(self, batch):
+    def generate_samples(self):
         # Only generate samples on the main process (rank 0)
         if self.rank is not None and self.rank != 0:
             return []
 
         try:
-            input_ids = batch['input_ids'].to(self.device)[:2]  # Take only first 2 examples
-            attention_mask = batch['attention_mask'].to(self.device)[:2]
+            batch = self._get_fixed_sample_batch()
+            if batch is None:
+                return []
+
+            input_ids = batch['input_ids'].to(self.device)
+            attention_mask = batch['attention_mask'].to(self.device)
 
             # Get the base model if using DDP
             student_model = self.student_model.module if isinstance(self.student_model, DDP) else self.student_model
+            original_padding_side = self.tokenizer.padding_side
+            self.tokenizer.padding_side = self.cfg.get('generation_padding_side', original_padding_side)
+            do_sample = self.generation_cfg.get('do_sample', False)
+            generate_kwargs = {
+                'max_new_tokens': self.generation_cfg.get('max_new_tokens', 50),
+                'num_return_sequences': 1,
+                'pad_token_id': self.tokenizer.pad_token_id,
+                'eos_token_id': self.tokenizer.eos_token_id,
+                'do_sample': do_sample,
+            }
+            if do_sample:
+                generate_kwargs['temperature'] = self.generation_cfg.get('temperature', 0.7)
+                generate_kwargs['top_p'] = self.generation_cfg.get('top_p', 0.9)
+            else:
+                generate_kwargs['temperature'] = 1.0
+                generate_kwargs['top_p'] = 1.0
 
             samples = []
-            for i in range(len(input_ids)):
-                sequence_length = int(attention_mask[i].sum().item())
-                if sequence_length <= 1:
-                    continue
+            try:
+                for i in range(len(input_ids)):
+                    sequence_length = int(attention_mask[i].sum().item())
+                    if sequence_length <= 1:
+                        continue
 
-                # For sliding-window LM data there isn't a true prompt/answer boundary.
-                # Create a stable, readable split for logging: first half as "prompt",
-                # second half as "ground truth".
-                prompt_length = max(1, min(sequence_length - 1, sequence_length // 2))
+                    # For sliding-window LM data there isn't a true prompt/answer boundary.
+                    # Create a stable, readable split for logging: first half as "prompt",
+                    # second half as "ground truth".
+                    prompt_length = max(1, min(sequence_length - 1, sequence_length // 2))
 
-                prompt_ids = input_ids[i][:prompt_length]
-                generation_input_ids = prompt_ids.unsqueeze(0)
+                    prompt_ids = input_ids[i][:prompt_length]
+                    generation_input_ids = prompt_ids.unsqueeze(0)
+                    generation_attention_mask = torch.ones_like(generation_input_ids)
 
-                with torch.no_grad():
-                    student_output = student_model.generate(
-                        input_ids=generation_input_ids,
-                        max_new_tokens=50,
-                        num_return_sequences=1,
-                        pad_token_id=self.tokenizer.pad_token_id,
-                        do_sample=True,
-                        temperature=0.7,
-                        top_p=0.9,
+                    with torch.no_grad():
+                        student_output = student_model.generate(
+                            input_ids=generation_input_ids,
+                            attention_mask=generation_attention_mask,
+                            **generate_kwargs,
+                        )
+
+                        teacher_output = self.teacher_model.generate(
+                            input_ids=generation_input_ids,
+                            attention_mask=generation_attention_mask,
+                            **generate_kwargs,
+                        )
+
+                    prompt = self.tokenizer.decode(prompt_ids, skip_special_tokens=True)
+                    ground_truth_ids = input_ids[i][prompt_length:sequence_length]
+                    ground_truth = self.tokenizer.decode(ground_truth_ids, skip_special_tokens=True)
+
+                    generated_prompt_length = generation_input_ids.shape[1]
+                    student_completion = self.tokenizer.decode(
+                        student_output[0][generated_prompt_length:],
+                        skip_special_tokens=True,
+                    )
+                    teacher_completion = self.tokenizer.decode(
+                        teacher_output[0][generated_prompt_length:],
+                        skip_special_tokens=True,
                     )
 
-                    teacher_output = self.teacher_model.generate(
-                        input_ids=generation_input_ids,
-                        max_new_tokens=50,
-                        num_return_sequences=1,
-                        pad_token_id=self.tokenizer.pad_token_id,
-                        do_sample=True,
-                        temperature=0.7,
-                        top_p=0.9,
-                    )
+                    samples.append({
+                        'prompt': prompt,
+                        'student_completion': student_completion,
+                        'teacher_completion': teacher_completion,
+                        'ground_truth': ground_truth,
+                    })
 
-                prompt = self.tokenizer.decode(prompt_ids, skip_special_tokens=True)
-                ground_truth_ids = input_ids[i][prompt_length:sequence_length]
-                ground_truth = self.tokenizer.decode(ground_truth_ids, skip_special_tokens=True)
+                    if i == 0:  # Print first sample
+                        print("\nSample generation:")
+                        print(f"Prompt: {prompt[:100]}...")
+                        print(f"Ground Truth: {ground_truth[:100]}...")
+                        print(f"Student: {student_completion[:100]}...")
+                        print(f"Teacher: {teacher_completion[:100]}...")
 
-                generated_prompt_length = generation_input_ids.shape[1]
-                student_completion = self.tokenizer.decode(
-                    student_output[0][generated_prompt_length:],
-                    skip_special_tokens=True,
-                )
-                teacher_completion = self.tokenizer.decode(
-                    teacher_output[0][generated_prompt_length:],
-                    skip_special_tokens=True,
-                )
-
-                samples.append({
-                    'prompt': prompt,
-                    'student_completion': student_completion,
-                    'teacher_completion': teacher_completion,
-                    'ground_truth': ground_truth,
-                })
-
-                if i == 0:  # Print first sample
-                    print("\nSample generation:")
-                    print(f"Prompt: {prompt[:100]}...")
-                    print(f"Ground Truth: {ground_truth[:100]}...")
-                    print(f"Student: {student_completion[:100]}...")
-                    print(f"Teacher: {teacher_completion[:100]}...")
-
-            return samples
+                return samples
+            finally:
+                self.tokenizer.padding_side = original_padding_side
 
         except Exception as e:
             print(f"Error in generate_samples: {str(e)}")
@@ -376,8 +436,8 @@ class KDRecipe:
 
     def train(self):
         # Phase 1: NTP warmup (only if not in ntp_only mode)
-        if not self.ntp_only:
-            print("Starting Phase 1: NTP Training with Warmup (2000 steps)")
+        if not self.ntp_only and self.manual_warmup_steps > 0:
+            print(f"Starting Phase 1: NTP Training with Warmup ({self.manual_warmup_steps} steps)")
 
             # Temporarily set to NTP-only mode for warmup
             original_ntp_only = self.ntp_only
@@ -385,11 +445,11 @@ class KDRecipe:
 
             # Run 2000 steps of NTP training
             warmup_steps_done = 0
-            warmup_target_steps = 2000
+            warmup_target_steps = self.manual_warmup_steps
 
             while warmup_steps_done < warmup_target_steps:
                 if isinstance(self.train_loader.sampler, DistributedSampler):
-                    self.train_loader.sampler.set_epoch(self.epochs_run)
+                    self.train_loader.sampler.set_epoch(self.epochs_run + warmup_steps_done)
 
                 for step, batch in enumerate(self.train_loader):
                     if warmup_steps_done >= warmup_target_steps:
@@ -415,8 +475,11 @@ class KDRecipe:
                         self.global_step += 1
 
                         # Print progress every 100 steps
-                        if warmup_steps_done % 100 == 0:
-                            print(f"NTP Warmup: {warmup_steps_done}/{warmup_target_steps} steps, Loss: {scaled_loss.item():.4f}")
+                        if warmup_steps_done % self.log_every_n_steps == 0:
+                            print(
+                                f"NTP Warmup: {warmup_steps_done}/{warmup_target_steps} steps, "
+                                f"Loss: {loss.item():.4f}"
+                            )
 
                         # Validation every eval_every steps
                         if self.global_step % self.eval_every == 0:
@@ -431,7 +494,8 @@ class KDRecipe:
                         # Log to wandb
                         if self.use_wandb:
                             wandb.log({
-                                'train/ntp_warmup_loss': scaled_loss.item(),
+                                'train/ntp_warmup_loss': loss.item(),
+                                'train/ntp_warmup_loss_scaled': scaled_loss.item(),
                                 'train/learning_rate': self.lr_scheduler.get_last_lr()[0],
                                 'train/step': self.global_step,
                             })
@@ -468,8 +532,6 @@ class KDRecipe:
                 with torch.cuda.amp.autocast():
                     loss, ntp_loss, kd_loss = self._loss_step(batch)
                     scaled_loss = loss / self.gradient_accumulation_steps
-                    scaled_ntp_loss = ntp_loss / self.gradient_accumulation_steps
-                    scaled_kd_loss = kd_loss / self.gradient_accumulation_steps
 
                 self.scaler.scale(scaled_loss).backward()
 
@@ -483,25 +545,25 @@ class KDRecipe:
                     self.optimizer.zero_grad(set_to_none=True)
                     self.lr_scheduler.step()
 
-                    # Accumulate the scaled losses
-                    total_loss += scaled_loss.item()
-                    total_ntp_loss += scaled_ntp_loss.item()
-                    total_kd_loss += scaled_kd_loss.item()
+                    # Accumulate unscaled losses for logging and checkpoint comparison.
+                    total_loss += loss.item()
+                    total_ntp_loss += ntp_loss.item()
+                    total_kd_loss += kd_loss.item()
                     logged_steps += 1
                     self.global_step += 1
 
-                    # Print training metrics every 10 steps
-                    if self.global_step % 10 == 0:
+                    # Print training metrics at the configured frequency.
+                    if self.global_step % self.log_every_n_steps == 0:
                         if self.ntp_only:
                             progress_bar.set_postfix({
-                                'ntp_loss': f"{scaled_ntp_loss.item():.4f}",
+                                'ntp_loss': f"{ntp_loss.item():.4f}",
                                 'lr': f"{self.lr_scheduler.get_last_lr()[0]:.6f}",
                             })
                         else:
                             progress_bar.set_postfix({
-                                'loss': f"{scaled_loss.item():.4f}",
-                                'ntp_loss': f"{scaled_ntp_loss.item():.4f}",
-                                'kd_loss': f"{scaled_kd_loss.item():.4f}",
+                                'loss': f"{loss.item():.4f}",
+                                'ntp_loss': f"{ntp_loss.item():.4f}",
+                                'kd_loss': f"{kd_loss.item():.4f}",
                                 'lr': f"{self.lr_scheduler.get_last_lr()[0]:.6f}",
                             })
 
@@ -521,9 +583,9 @@ class KDRecipe:
                             })
 
                     # Generate and save samples
-                    if self.global_step % self.cfg['wandb']['generate_every_n_steps'] == 0:
+                    if self.generate_every_n_steps and self.global_step % self.generate_every_n_steps == 0:
                         print(f"\nStep {self.global_step}: Generating samples...")
-                        samples = self.generate_samples(batch)
+                        samples = self.generate_samples()
 
                         if not samples:
                             continue
@@ -552,12 +614,12 @@ class KDRecipe:
                             'train/step': self.global_step,
                         }
                         if self.ntp_only:
-                            log_data['train/ntp_loss'] = scaled_ntp_loss.item()
+                            log_data['train/ntp_loss'] = ntp_loss.item()
                         else:
                             log_data.update({
-                                'train/loss': scaled_loss.item(),
-                                'train/ntp_loss': scaled_ntp_loss.item(),
-                                'train/kd_loss': scaled_kd_loss.item(),
+                                'train/loss': loss.item(),
+                                'train/ntp_loss': ntp_loss.item(),
+                                'train/kd_loss': kd_loss.item(),
                             })
                         wandb.log(log_data)
 
@@ -578,15 +640,20 @@ class KDRecipe:
                     'epoch': epoch
                 })
 
-            # Save best model based on validation loss
-            if val_metrics['loss'] < self.best_val_loss:
-                self.best_val_loss = val_metrics['loss']
-                self.save_checkpoint(epoch, total_loss / logged_steps, val_metrics['loss'], is_best=True)
-                print(f"New best validation loss: {val_metrics['loss']:.4f}")
+            # Save best model using the configured primary metric.
+            primary_metric_value = self._get_primary_metric_value(val_metrics)
+            if primary_metric_value < self.best_val_metric:
+                self.best_val_metric = primary_metric_value
+                self.save_checkpoint(epoch, total_loss / logged_steps, val_metrics, is_best=True)
+                print(
+                    f"New best {self.primary_val_metric}: {primary_metric_value:.4f} "
+                    f"(loss={val_metrics['loss']:.4f}, ntp_loss={val_metrics['ntp_loss']:.4f}, "
+                    f"perplexity={val_metrics['perplexity']:.4f})"
+                )
 
             # Regular checkpoint saving
             if (epoch + 1) % self.save_checkpoint_every == 0:
-                self.save_checkpoint(epoch, total_loss / logged_steps, val_metrics['loss'])
+                self.save_checkpoint(epoch, total_loss / logged_steps, val_metrics)
 
             print(f"Epoch {epoch+1} metrics:")
             print(f"Train Loss: {total_loss/logged_steps:.4f}")
@@ -623,7 +690,7 @@ class KDRecipe:
             json.dump(samples, f, indent=2)
         print(f"Saved samples to {samples_file}")
 
-    def save_checkpoint(self, epoch, train_loss, val_loss, is_best=False):
+    def save_checkpoint(self, epoch, train_loss, val_metrics, is_best=False):
         # Only save checkpoint from rank 0 process
         if self.rank is not None and self.rank != 0:
             return
@@ -636,8 +703,14 @@ class KDRecipe:
                 else self.student_model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'lr_scheduler_state_dict': self.lr_scheduler.state_dict(),
+            'global_step': self.global_step,
             'train_loss': train_loss,
-            'val_loss': val_loss,
+            'val_loss': val_metrics['loss'],
+            'val_ntp_loss': val_metrics['ntp_loss'],
+            'val_kd_loss': val_metrics['kd_loss'],
+            'val_perplexity': val_metrics['perplexity'],
+            'best_val_metric': self.best_val_metric,
+            'best_val_metric_name': self.primary_val_metric,
             'train_losses': self.train_losses,
             'eval_losses': self.eval_losses,
             'train_ppls': self.train_ppls,
@@ -677,6 +750,12 @@ class KDRecipe:
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
         self.epochs_run = checkpoint['epoch'] + 1
+        self.global_step = checkpoint.get('global_step', self.global_step)
+        self.best_val_metric = checkpoint.get(
+            'best_val_metric',
+            checkpoint.get('best_val_loss', float('inf')),
+        )
+        self.primary_val_metric = checkpoint.get('best_val_metric_name', self.primary_val_metric)
         self.train_losses = checkpoint.get('train_losses', [])
         self.eval_losses = checkpoint.get('eval_losses', [])
         self.train_ppls = checkpoint.get('train_ppls', [])
@@ -735,12 +814,17 @@ def main(rank=None, world_size=None):
             'max_length': yaml_cfg['data']['max_length'],
             'stride': yaml_cfg['data']['stride'],
             'batch_size': yaml_cfg['data']['batch_size'],
+            'val_split_ratio': yaml_cfg['data'].get('val_split_ratio', 0.1),
+            'val_stride': yaml_cfg['data'].get('val_stride'),
             'learning_rate': yaml_cfg['training']['learning_rate'],
             'epochs': yaml_cfg['training']['epochs'],
             'max_steps_per_epoch': yaml_cfg['training']['max_steps_per_epoch'],
             'gradient_accumulation_steps': yaml_cfg['training']['gradient_accumulation_steps'],
             'clip_grad_norm': yaml_cfg['training']['clip_grad_norm'],
             'kd_ratio': yaml_cfg['training']['kd_ratio'],
+            'warmup_steps': yaml_cfg['training'].get('warmup_steps', 2000),
+            'manual_warmup_steps': yaml_cfg['training'].get('manual_warmup_steps'),
+            'primary_val_metric': yaml_cfg['training'].get('primary_val_metric', 'ntp_loss'),
             'seed': yaml_cfg['training']['seed'],
             'log_every_n_steps': yaml_cfg['training']['log_every_n_steps'],
             'resume_from_checkpoint': args.resume if args.resume else yaml_cfg['checkpointing']['resume'],
@@ -751,9 +835,12 @@ def main(rank=None, world_size=None):
             'log_peak_memory_stats': True,
     	    'kd_loss_type': yaml_cfg['training']['kd_loss_type'],
             'kd_temperature': yaml_cfg['training']['kd_temperature'],
+            'train_padding_side': yaml_cfg.get('tokenizer', {}).get('train_padding_side', 'right'),
+            'generation_padding_side': yaml_cfg.get('tokenizer', {}).get('generation_padding_side', 'left'),
             'training': yaml_cfg['training'],
+            'generation': yaml_cfg.get('generation', {}),
             'wandb': yaml_cfg['wandb'],
-            'ntp_only': args.ntp_only
+            'ntp_only': args.ntp_only or yaml_cfg['training'].get('ntp_only', False)
         }
 
         print(f"CUDA available: {torch.cuda.is_available()}")
@@ -781,7 +868,6 @@ def main(rank=None, world_size=None):
 if __name__ == "__main__":
     # Check if using multiple GPUs
     n_gpus = torch.cuda.device_count()
-    n_gpus = 1
     if n_gpus > 1:
         mp.spawn(
             main,

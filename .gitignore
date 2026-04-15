@@ -29,3 +29,5 @@ wandb/
 logs/
 .venv/
 src/outputs/
+outputs/
+temp_model_for_eval_*/

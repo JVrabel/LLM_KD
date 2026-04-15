@@ -29,6 +29,11 @@ def build_instruction_cfg(yaml_cfg):
         'batch_size': yaml_cfg['data']['batch_size'],
         'seed': yaml_cfg['training']['seed'],
         'is_instruction_tuning': True,
+        'val_split_ratio': yaml_cfg['data'].get('val_split_ratio', 0.1),
+        'val_stride': yaml_cfg['data'].get('val_stride'),
+        'train_padding_side': yaml_cfg.get('tokenizer', {}).get('train_padding_side', 'right'),
+        'generation_padding_side': yaml_cfg.get('tokenizer', {}).get('generation_padding_side', 'left'),
+        'generation': yaml_cfg.get('generation', {}),
     }
 
 
@@ -99,52 +104,68 @@ def evaluate_instruction_model(model, dataloader, device, max_batches=None):
     }
 
 
-def generate_samples(model, tokenizer, dataloader, device, num_samples):
+def generate_samples(model, tokenizer, dataloader, device, num_samples, generation_cfg, generation_padding_side):
     samples = []
+    do_sample = generation_cfg.get('do_sample', False)
+    generate_kwargs = {
+        'max_new_tokens': generation_cfg.get('max_new_tokens', 80),
+        'pad_token_id': tokenizer.pad_token_id,
+        'eos_token_id': tokenizer.eos_token_id,
+        'do_sample': do_sample,
+    }
+    if do_sample:
+        generate_kwargs['temperature'] = generation_cfg.get('temperature', 0.7)
+        generate_kwargs['top_p'] = generation_cfg.get('top_p', 0.9)
+    else:
+        generate_kwargs['temperature'] = 1.0
+        generate_kwargs['top_p'] = 1.0
+    original_padding_side = tokenizer.padding_side
+    tokenizer.padding_side = generation_padding_side
 
-    with torch.no_grad():
-        for batch in dataloader:
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            labels = batch['labels'].to(device)
+    try:
+        with torch.no_grad():
+            for batch in dataloader:
+                input_ids = batch['input_ids'].to(device)
+                attention_mask = batch['attention_mask'].to(device)
+                labels = batch['labels'].to(device)
 
-            for i in range(input_ids.size(0)):
-                if len(samples) >= num_samples:
-                    return samples
+                for i in range(input_ids.size(0)):
+                    if len(samples) >= num_samples:
+                        return samples
 
-                sequence_length = int(attention_mask[i].sum().item())
-                target_positions = torch.nonzero(labels[i] != -100, as_tuple=False).flatten()
-                prompt_length = int(target_positions[0].item()) if target_positions.numel() > 0 else sequence_length
+                    sequence_length = int(attention_mask[i].sum().item())
+                    target_positions = torch.nonzero(labels[i] != -100, as_tuple=False).flatten()
+                    prompt_length = int(target_positions[0].item()) if target_positions.numel() > 0 else sequence_length
 
-                generation_input_ids = input_ids[i][:max(prompt_length, 1)].unsqueeze(0)
-                outputs = model.generate(
-                    input_ids=generation_input_ids,
-                    max_new_tokens=80,
-                    do_sample=True,
-                    temperature=0.7,
-                    top_p=0.9,
-                    pad_token_id=tokenizer.pad_token_id,
-                )
+                    generation_input_ids = input_ids[i][:max(prompt_length, 1)].unsqueeze(0)
+                    generation_attention_mask = torch.ones_like(generation_input_ids)
+                    outputs = model.generate(
+                        input_ids=generation_input_ids,
+                        attention_mask=generation_attention_mask,
+                        **generate_kwargs,
+                    )
 
-                prompt = tokenizer.decode(input_ids[i][:prompt_length], skip_special_tokens=True)
-                ground_truth = tokenizer.decode(
-                    input_ids[i][prompt_length:sequence_length],
-                    skip_special_tokens=True,
-                )
-                prediction = tokenizer.decode(
-                    outputs[0][generation_input_ids.shape[1]:],
-                    skip_special_tokens=True,
-                )
+                    prompt = tokenizer.decode(input_ids[i][:prompt_length], skip_special_tokens=True)
+                    ground_truth = tokenizer.decode(
+                        input_ids[i][prompt_length:sequence_length],
+                        skip_special_tokens=True,
+                    )
+                    prediction = tokenizer.decode(
+                        outputs[0][generation_input_ids.shape[1]:],
+                        skip_special_tokens=True,
+                    )
 
-                samples.append(
-                    {
-                        'prompt': prompt,
-                        'ground_truth': ground_truth,
-                        'prediction': prediction,
-                    }
-                )
+                    samples.append(
+                        {
+                            'prompt': prompt,
+                            'ground_truth': ground_truth,
+                            'prediction': prediction,
+                        }
+                    )
 
-    return samples
+        return samples
+    finally:
+        tokenizer.padding_side = original_padding_side
 
 
 def main():
@@ -166,13 +187,21 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(cfg['model_name'])
     tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side = "right"
+    tokenizer.padding_side = cfg['train_padding_side']
 
     _, val_loader = setup_dataloaders(cfg, tokenizer)
     model = load_student_model(cfg, args.checkpoint, device)
 
     metrics = evaluate_instruction_model(model, val_loader, device, args.max_eval_batches)
-    samples = generate_samples(model, tokenizer, val_loader, device, args.num_samples)
+    samples = generate_samples(
+        model,
+        tokenizer,
+        val_loader,
+        device,
+        args.num_samples,
+        cfg['generation'],
+        cfg['generation_padding_side'],
+    )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = Path(args.output_dir) / f"instruction_eval_{Path(args.checkpoint).stem}_{timestamp}.json"

@@ -15,5 +15,5 @@ enroot start --root --mount=/scratch/vrabel/LLM_KD:/workspace pytorch_LLM_v1 bas
     echo 'Inside container: Mounted directory contents:' &&
     ls -al /workspace &&
     mkdir -p /workspace/logs &&
-    python src/train_distr.py --config src/config.yaml
+    python src/train_distr.py --config config/pretrain.yaml
 "

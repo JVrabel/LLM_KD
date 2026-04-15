@@ -19,6 +19,7 @@ class ModelBuilder:
         # --- Add KD config reading ---
         self.kd_loss_type = self.cfg.get('kd_loss_type', 'mse') # Default to 'mse'
         self.kd_temperature = self.cfg.get('kd_temperature', 2.0) # Default temperature for KL Div
+        self.train_padding_side = self.cfg.get('train_padding_side', 'right')
         # --- End of added KD config reading ---
 
     def setup(self):
@@ -31,7 +32,7 @@ class ModelBuilder:
     def _setup_tokenizer(self):
         tokenizer = AutoTokenizer.from_pretrained(self.cfg['model_name'])
         tokenizer.pad_token = tokenizer.eos_token
-        tokenizer.padding_side = "right"
+        tokenizer.padding_side = self.train_padding_side
         return tokenizer
 
     def _setup_student_model(self):

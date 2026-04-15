@@ -37,8 +37,27 @@ def create_temp_model_dir(temp_dir=None):
     temp_root.mkdir(parents=True, exist_ok=True)
     return Path(tempfile.mkdtemp(prefix="temp_model_for_eval_", dir=str(temp_root)))
 
-def load_model_info(checkpoint_path, cfg, use_base_model=False, use_teacher_model=False, temp_dir=None):
-    """Prepare model information for evaluation - FIXED VERSION"""
+
+def _build_model_config(cfg, reduced_student=False):
+    model_config = AutoConfig.from_pretrained(cfg['model']['name'])
+    if reduced_student:
+        factor = cfg['model']['student']['size_reduction_factor']
+        print(f"Reducing model size by factor of {factor}")
+        # Match training: reduce num_hidden_layers and intermediate_size only.
+        model_config.num_hidden_layers = max(1, model_config.num_hidden_layers // factor)
+        model_config.intermediate_size = max(1, model_config.intermediate_size // factor)
+    return model_config
+
+
+def load_model_info(
+    checkpoint_path,
+    cfg,
+    use_base_model=False,
+    use_teacher_model=False,
+    reduced_student=False,
+    temp_dir=None,
+):
+    """Prepare model information for evaluation."""
     if use_teacher_model:
         temp_model_path = create_temp_model_dir(temp_dir)
 
@@ -53,51 +72,35 @@ def load_model_info(checkpoint_path, cfg, use_base_model=False, use_teacher_mode
         print("Teacher model (full base) loaded successfully")
 
     elif use_base_model:
-        # Just use base model with student configuration
-        model_config = AutoConfig.from_pretrained(cfg['model']['name'])
-        reduce_size = cfg['model']['student'].get('reduce_size', False)
-        factor = cfg['model']['student'].get('size_reduction_factor', 1)
+        if reduced_student:
+            raise ValueError(
+                "--use_base_model cannot be combined with --reduced_student. "
+                "The reduced student is a separate architecture and must be loaded from a checkpoint."
+            )
 
-        # Avoid exporting and reloading the model when evaluating the unchanged base model.
-        if not reduce_size or factor == 1:
-            print("Using base model directly; skipping temporary export")
-            return cfg['model']['name'], None
-
-        temp_model_path = create_temp_model_dir(temp_dir)
-        if reduce_size:
-            print(f"Using base model with reduced size (factor: {factor})")
-            # Match training: reduce num_hidden_layers and intermediate_size only
-            model_config.num_hidden_layers = max(1, model_config.num_hidden_layers // factor)
-            model_config.intermediate_size = max(1, model_config.intermediate_size // factor)
-
-        model = AutoModelForCausalLM.from_pretrained(
-            cfg['model']['name'],
-            config=model_config,
-            torch_dtype=torch.bfloat16,
-            trust_remote_code=True
-        )
-        print("Using base model with student configuration")
+        # Avoid exporting and reloading the unchanged base model.
+        print("Using base model directly; skipping temporary export")
+        return cfg['model']['name'], None
 
     else:
         print(f"\nLoading checkpoint from: {checkpoint_path}")
         temp_model_path = create_temp_model_dir(temp_dir)
 
-        # Create model configuration (match training config exactly)
-        model_config = AutoConfig.from_pretrained(cfg['model']['name'])
-        if cfg['model']['student'].get('reduce_size', False):
-            factor = cfg['model']['student']['size_reduction_factor']
-            print(f"Reducing model size by factor of {factor}")
-            # Match training: reduce num_hidden_layers and intermediate_size only
-            model_config.num_hidden_layers = max(1, model_config.num_hidden_layers // factor)
-            model_config.intermediate_size = max(1, model_config.intermediate_size // factor)
-
-        # Load model with correct config
-        model = AutoModelForCausalLM.from_pretrained(
-            cfg['model']['name'],
-            config=model_config,
-            torch_dtype=torch.bfloat16,
-            trust_remote_code=True
-        )
+        # For reduced students, instantiate the architecture from config first.
+        # Loading base pretrained weights into the smaller architecture causes shape mismatches.
+        model_config = _build_model_config(cfg, reduced_student=reduced_student)
+        if reduced_student:
+            model = AutoModelForCausalLM.from_config(
+                model_config,
+                trust_remote_code=True,
+            )
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                cfg['model']['name'],
+                config=model_config,
+                torch_dtype=torch.bfloat16,
+                trust_remote_code=True,
+            )
 
         # Load checkpoint
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
@@ -127,7 +130,7 @@ def load_model_info(checkpoint_path, cfg, use_base_model=False, use_teacher_mode
 
     return str(temp_model_path.absolute()), str(temp_model_path.absolute())
 
-def create_model_identifier(cfg, checkpoint_path, use_base_model, use_teacher_model, medical_only):
+def create_model_identifier(cfg, checkpoint_path, use_base_model, use_teacher_model, medical_only, reduced_student):
     """Create a descriptive identifier for the model being evaluated"""
     # Extract base model name (remove path separators)
     base_model = cfg['model']['name'].replace('/', '_').replace('-', '_')
@@ -147,7 +150,7 @@ def create_model_identifier(cfg, checkpoint_path, use_base_model, use_teacher_mo
 
     # Add size reduction info if applicable (not for teacher model)
     size_info = ""
-    if not use_teacher_model and cfg['model']['student'].get('reduce_size', False):
+    if not use_teacher_model and reduced_student:
         factor = cfg['model']['student']['size_reduction_factor']
         size_info = f"_reduced_{factor}x"
 
@@ -156,12 +159,29 @@ def create_model_identifier(cfg, checkpoint_path, use_base_model, use_teacher_mo
 
     return f"{base_model}_{model_type}{size_info}_{eval_scope}_{timestamp}"
 
-def run_mmlu_eval(model_path, output_dir, cfg, checkpoint_path, use_base_model, use_teacher_model, medical_only=False, temp_model_dir=None):
+def run_mmlu_eval(
+    model_path,
+    output_dir,
+    cfg,
+    checkpoint_path,
+    use_base_model,
+    use_teacher_model,
+    medical_only=False,
+    temp_model_dir=None,
+    reduced_student=False,
+):
     """Run MMLU evaluation using lm-evaluation-harness"""
     output_dir = Path(output_dir).resolve()
 
     # Create descriptive filename
-    model_id = create_model_identifier(cfg, checkpoint_path, use_base_model, use_teacher_model, medical_only)
+    model_id = create_model_identifier(
+        cfg,
+        checkpoint_path,
+        use_base_model,
+        use_teacher_model,
+        medical_only,
+        reduced_student,
+    )
     output_file = Path(output_dir) / f"mmlu_results_{model_id}.json"
 
     print(f"Results will be saved as: {output_file}")
@@ -210,8 +230,8 @@ def run_mmlu_eval(model_path, output_dir, cfg, checkpoint_path, use_base_model, 
                 'medical_only': medical_only,
                 'model_identifier': model_id,
                 'evaluation_timestamp': datetime.now().isoformat(),
-                'size_reduced': cfg['model']['student'].get('reduce_size', False) if not use_teacher_model else False,
-                'size_reduction_factor': cfg['model']['student'].get('size_reduction_factor', None) if cfg['model']['student'].get('reduce_size', False) and not use_teacher_model else None
+                'size_reduced': reduced_student if not use_teacher_model else False,
+                'size_reduction_factor': cfg['model']['student'].get('size_reduction_factor', None) if reduced_student and not use_teacher_model else None
             }
 
             # Save updated results with metadata.
@@ -264,7 +284,7 @@ def run_custom_eval(model, tokenizer, dataset_path):
                 **inputs,
                 max_new_tokens=1,
                 pad_token_id=tokenizer.eos_token_id,
-                temperature=0.001,  # Greedy decoding
+                do_sample=False,
             )
 
         # Decode the generated token
@@ -300,8 +320,9 @@ def main():
     parser.add_argument('--checkpoint', type=str, help='Path to model checkpoint')
     parser.add_argument('--config', type=str, required=True, help='Path to config file')
     parser.add_argument('--output_dir', type=str, required=True, help='Directory to save evaluation results')
-    parser.add_argument('--use_base_model', action='store_true', help='Use base HF model with student config instead of checkpoint')
+    parser.add_argument('--use_base_model', action='store_true', help='Use the original base HF model instead of a checkpoint')
     parser.add_argument('--use_teacher_model', action='store_true', help='Use teacher model (full-size, unquantized) for evaluation')
+    parser.add_argument('--reduced_student', action='store_true', help='Instantiate the reduced student architecture before loading a checkpoint')
     parser.add_argument('--medical_only', action='store_true', help='Evaluate only medical MMLU tasks')
     parser.add_argument('--temp_dir', type=str, default=None, help='Directory for temporary exported models')
     args = parser.parse_args()
@@ -315,6 +336,9 @@ def main():
     with open(args.config, 'r') as f:
         cfg = yaml.safe_load(f)
 
+    if args.reduced_student and not args.checkpoint:
+        parser.error("--reduced_student can only be used together with --checkpoint")
+
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -324,6 +348,7 @@ def main():
         cfg,
         args.use_base_model,
         args.use_teacher_model,
+        args.reduced_student,
         args.temp_dir,
     )
     results = run_mmlu_eval(
@@ -335,6 +360,7 @@ def main():
         args.use_teacher_model,
         args.medical_only,
         temp_model_dir,
+        args.reduced_student,
     )
 
     if results:
