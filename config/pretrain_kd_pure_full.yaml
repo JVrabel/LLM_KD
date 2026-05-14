@@ -1,0 +1,61 @@
+model:
+  name: "meta-llama/Llama-3.2-1b"
+  student:
+    reduce_size: false  # Use the full student architecture
+    size_reduction_factor: 1
+
+data:
+  sources:
+    - path: "data/apollo/merged_apollo_en_corpus.jsonl"
+  max_length: 512
+  stride: 128  # Match the recent comparison runs
+  val_stride: 0  # Tokenizer stride is overlap; 0 gives non-overlapping validation windows
+  val_split_ratio: 0.1
+  batch_size: 8
+
+tokenizer:
+  train_padding_side: "right"
+  generation_padding_side: "left"
+
+training:
+  learning_rate: 1.0e-4
+  epochs: 20
+  max_steps_per_epoch: null
+  gradient_accumulation_steps: 4
+  clip_grad_norm: 1.0
+  warmup_steps: 2000
+  kd_ratio: 1.0  # Pure KD after the normal NTP warmup
+  primary_val_metric: "ntp_loss"
+  ntp_only: false
+  seed: 42
+  log_every_n_steps: 100
+  eval_every: 1000
+  eval_steps: 100
+
+  kd_loss_type: "kl_div"
+  kd_temperature: 2.0
+
+checkpointing:
+  save_every_n_epochs: 1
+  keep_n_checkpoints: 5
+  resume: null
+
+output:
+  dir: "runs/kd_pure_full_LLM_modular_v1"
+
+generation:
+  every_n_steps: 500
+  sample_num_examples: 2
+  max_new_tokens: 50
+  do_sample: false
+  temperature: 0.7
+  top_p: 0.9
+
+wandb:
+  enabled: true
+  project: "llm_kd"
+  name: "distributed_training_kd_pure_full"
+  resume_id: null
+  tags: ["kd_only", "apollo", "full_student"]
+  notes: "Twenty-epoch pure-KD run on the full Apollo medical dataset with the full-size student architecture."
+  log_every_n_steps: 10

@@ -137,6 +137,8 @@ typing_extensions==4.12.2
 tzdata==2024.1
 urllib3==2.2.3
 watchdog==4.0.2
+wandb==0.25.1
 wcwidth==0.2.13
 xxhash==3.5.0
 yarl==1.11.1
+lm_eval==0.4.11
