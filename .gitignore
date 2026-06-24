@@ -31,3 +31,4 @@ logs/
 src/outputs/
 outputs/
 temp_model_for_eval_*/
+trained_model/

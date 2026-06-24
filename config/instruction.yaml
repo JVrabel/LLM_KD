@@ -4,7 +4,7 @@ teacher_model:
 
 model:
   student:
-    reduce_size: true
+    reduce_size: false  # Match the full-size boss checkpoint
     size_reduction_factor: 1
 
 data:
@@ -18,10 +18,14 @@ data:
   stride: 380
   batch_size: 8
 
+tokenizer:
+  train_padding_side: "right"
+  generation_padding_side: "left"
+
 training:
   learning_rate: 1.0e-5
   epochs: 2
-  max_steps_per_epoch: 1000
+  max_steps_per_epoch: null
   gradient_accumulation_steps: 4
   clip_grad_norm: 1.0
   kd_ratio: 1.0
@@ -39,6 +43,12 @@ checkpointing:
 
 output:
   dir: "outputs/instruction_tuning"
+
+generation:
+  max_new_tokens: 80
+  do_sample: false
+  temperature: 0.7
+  top_p: 0.9
 
 wandb:
   enabled: true

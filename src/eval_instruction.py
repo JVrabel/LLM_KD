@@ -8,9 +8,10 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 import yaml
+from torch.utils.data import DataLoader, Dataset
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
-from data_setup import setup_dataloaders
+from data_setup import collate_fn
 
 
 def build_instruction_cfg(yaml_cfg):
@@ -35,6 +36,152 @@ def build_instruction_cfg(yaml_cfg):
         'generation_padding_side': yaml_cfg.get('tokenizer', {}).get('generation_padding_side', 'left'),
         'generation': yaml_cfg.get('generation', {}),
     }
+
+
+class InMemoryInstructionDataset(Dataset):
+    def __init__(self, examples):
+        self.examples = examples
+
+    def __len__(self):
+        return len(self.examples)
+
+    def __getitem__(self, idx):
+        example = self.examples[idx]
+        return {
+            'input_ids': example['input_ids'].clone().detach(),
+            'attention_mask': example['attention_mask'].clone().detach(),
+            'labels': example['labels'].clone().detach(),
+        }
+
+
+def clean_text(text):
+    text = ' '.join(str(text).split())
+    text = text.replace('_', '')
+    text = text.replace('(', '').replace(')', '')
+    text = text.replace('viz.', 'namely')
+    return ' '.join(text.split()).strip()
+
+
+def format_instruction_example(data, tokenizer):
+    eos_token = tokenizer.eos_token if tokenizer.eos_token else "</s>"
+
+    if isinstance(data, list) and len(data) >= 2:
+        prompt = clean_text(data[0])
+        response = clean_text(data[1])
+        return {
+            'prompt_text': f"{prompt}\n\nAnswer:",
+            'full_text': f"{prompt}\n\nAnswer: {response}{eos_token}",
+        }
+
+    if isinstance(data, dict):
+        if 'instruction' in data and 'output' in data:
+            instruction = clean_text(data['instruction'])
+            output = clean_text(data['output'])
+            input_text = clean_text(data.get('input', '')) if data.get('input') else ""
+            prompt_parts = [instruction]
+            if input_text:
+                prompt_parts.append(f"Input: {input_text}")
+            prompt = "\n\n".join(part for part in prompt_parts if part)
+            return {
+                'prompt_text': f"{prompt}\n\nAnswer:",
+                'full_text': f"{prompt}\n\nAnswer: {output}{eos_token}",
+            }
+
+        if 'question' in data and 'answer' in data:
+            question = clean_text(data['question'])
+            answer = clean_text(data['answer'])
+            return {
+                'prompt_text': f"{question}\n\nAnswer:",
+                'full_text': f"{question}\n\nAnswer: {answer}{eos_token}",
+            }
+
+        if 'prompt' in data and 'response' in data:
+            prompt = clean_text(data['prompt'])
+            response = clean_text(data['response'])
+            return {
+                'prompt_text': prompt,
+                'full_text': f"{prompt}{response}{eos_token}",
+            }
+
+    return None
+
+
+def compute_val_indices(file_path, seed, val_split_ratio):
+    with open(file_path, 'r', encoding='utf-8') as handle:
+        total_records = sum(1 for line in handle if line.strip())
+
+    if total_records < 2:
+        raise ValueError("Need at least two JSONL records to create a validation split.")
+
+    generator = torch.Generator().manual_seed(seed)
+    shuffled_indices = torch.randperm(total_records, generator=generator).tolist()
+    val_size = int(round(total_records * val_split_ratio))
+    val_size = min(max(1, val_size), total_records - 1)
+    return sorted(shuffled_indices[:val_size])
+
+
+def tokenize_instruction_example(formatted_example, tokenizer, max_length):
+    prompt_ids = tokenizer(
+        formatted_example['prompt_text'],
+        truncation=True,
+        max_length=max_length,
+        add_special_tokens=True,
+        return_tensors='pt',
+    )['input_ids'].squeeze(0)
+
+    tokenized = tokenizer(
+        formatted_example['full_text'],
+        max_length=max_length,
+        truncation=True,
+        padding='max_length',
+        add_special_tokens=True,
+        return_tensors='pt',
+    )
+
+    input_ids = tokenized['input_ids'].squeeze(0)
+    attention_mask = tokenized['attention_mask'].squeeze(0)
+    labels = input_ids.clone()
+    prompt_length = min(prompt_ids.size(0), labels.size(0))
+    labels[:prompt_length] = -100
+    labels[attention_mask == 0] = -100
+
+    return {
+        'input_ids': input_ids,
+        'attention_mask': attention_mask,
+        'labels': labels,
+    }
+
+
+def build_validation_loader(cfg, tokenizer, max_examples=None):
+    val_indices = compute_val_indices(cfg['data_path'], cfg['seed'], cfg['val_split_ratio'])
+    if max_examples is not None:
+        val_indices = val_indices[:max_examples]
+    val_index_set = set(val_indices)
+
+    examples = []
+    with open(cfg['data_path'], 'r', encoding='utf-8') as handle:
+        for line_idx, line in enumerate(handle):
+            if line_idx not in val_index_set:
+                continue
+            data = json.loads(line)
+            formatted_example = format_instruction_example(data, tokenizer)
+            if formatted_example is None:
+                print(f"Warning: Unknown instruction data format at line {line_idx}: {data}")
+                continue
+            examples.append(tokenize_instruction_example(formatted_example, tokenizer, cfg['max_length']))
+
+    if not examples:
+        raise ValueError("No validation examples were loaded.")
+
+    print(f"Loaded {len(examples)} validation examples into memory.")
+    return DataLoader(
+        InMemoryInstructionDataset(examples),
+        batch_size=cfg['batch_size'],
+        shuffle=False,
+        num_workers=0,
+        pin_memory=True,
+        collate_fn=collate_fn,
+    )
 
 
 def load_student_model(cfg, checkpoint_path, device):
@@ -189,7 +336,10 @@ def main():
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = cfg['train_padding_side']
 
-    _, val_loader = setup_dataloaders(cfg, tokenizer)
+    max_examples = None
+    if args.max_eval_batches is not None:
+        max_examples = args.max_eval_batches * cfg['batch_size']
+    val_loader = build_validation_loader(cfg, tokenizer, max_examples=max_examples)
     model = load_student_model(cfg, args.checkpoint, device)
 
     metrics = evaluate_instruction_model(model, val_loader, device, args.max_eval_batches)

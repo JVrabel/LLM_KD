@@ -1,0 +1,44 @@
+# Small instruction-tuning smoke test (Phase 2)
+teacher_model:
+  name: "meta-llama/Llama-3.2-1B-Instruct"
+
+model:
+  student:
+    reduce_size: false  # Match the full-size boss checkpoint
+    size_reduction_factor: 1
+
+data:
+  instruction_path: "data/apollo_small_qa/merged_apollo_en_qa.jsonl"
+  max_length: 512
+  stride: 0  # Unused for instruction tuning; required by train_instr_distr.py
+  batch_size: 2
+
+training:
+  learning_rate: 1.0e-5
+  epochs: 1
+  max_steps_per_epoch: 10
+  gradient_accumulation_steps: 1
+  clip_grad_norm: 1.0
+  kd_ratio: 1.0
+  ntp_only: false
+  seed: 42
+  log_every_n_steps: 1
+  eval_every: 5
+  eval_steps: 5
+  kd_loss_type: "kl_div"
+  kd_temperature: 2.0
+
+checkpointing:
+  save_every_n_epochs: 1
+  keep_n_checkpoints: 1
+
+output:
+  dir: "runs/instruction_small"
+
+wandb:
+  enabled: false
+  project: "llm-instruction-kd"
+  name: "instruction-small-smoke"
+  tags: ["instruction", "smoke_test"]
+  notes: "Smoke test on 128-row Apollo SFT subset with boss checkpoint"
+  generate_every_n_steps: 5

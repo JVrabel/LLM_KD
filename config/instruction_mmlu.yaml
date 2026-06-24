@@ -1,0 +1,26 @@
+# MMLU evaluation config for the full-size instruction-tuned boss student.
+#
+# This config is shaped for src/eval.py, not src/train_instr_distr.py.
+# The checkpoint was instruction-tuned with the Llama-3.2-1B-Instruct
+# tokenizer/config and a full-size student architecture.
+model:
+  name: "meta-llama/Llama-3.2-1B-Instruct"
+  student:
+    reduce_size: false
+    size_reduction_factor: 1
+
+data:
+  sources:
+    - path: "data/apollo/qa/merged_apollo_en_qa.jsonl"
+  max_length: 512
+  stride: 0
+  val_stride: 0
+  val_split_ratio: 0.1
+  batch_size: 8
+
+tokenizer:
+  train_padding_side: "right"
+  generation_padding_side: "left"
+
+training:
+  seed: 42
