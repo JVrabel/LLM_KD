@@ -1,0 +1,16 @@
+# Short run to prove the trainer. About 1.6M tokens, one GPU, no distillation.
+seed: 42
+data_dir: /projects/u6wc/savants/data/packed/python
+output_dir: /projects/u6wc/savants/runs/pilot_0.6b_smoke
+training:
+  steps: 100
+  warmup_steps: 10
+  decay_start_step: 80
+  learning_rate: 6.0e-4
+  lr_floor: 0.1
+  batch_sequences: 4
+  kd_ratio: 0.0
+  temperature: 1.0
+  logit_chunk: 1024
+  log_every: 10
+  save_every: 50

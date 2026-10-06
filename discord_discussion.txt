@@ -1,0 +1,33 @@
+ahoj, mame ten compute. Rozmyslal som, ze by sme to mohli skusit scale-upnut s tym ai savants aspon na 7B ak nie teacher este vacsi. Teraz je qwen 3.8 27B, vraj na urovni opusu.
+Ten isambard je gh200 co ma vraj extremne dobru komunikaciu cpu-gpu. Takze mozno teacher by vedel bezat na cpu? Je to ale arm-based, takze nejaje triky by to mohlo potrebovat.
+Daj vediet ci to cchces skusit pls. V prvej iteracii na to mozme minut 2000gpu hodin kludne. Skusil by som asi rovnaku temp a kl mix ako sme mali pri mensich modeloch.
+Kazdopadne ak nestihas lebo je na avaltare vela prace tak to mozno mozem skusit aj ja.
+
+Jakub — 29/09/2026, 11:43
+Pocuj, rozmyslam co s tymi AI savants... mame tych 10k GPU hodin (resp uz len 7k a nieco z toho rezervovane, ale stale dost). Myslis, ze by stalo za to vyskusat to s vacsimi modelmi? 7/8B? Tam uz tie capability skokovo idu hore v base aj instruct modeloch, tak by ma zaujimalo uz aj len ako sa to prejavi v tych savantoch.
+Markek — 30/09/2026, 11:54
+cauko hej urcite by som to mohol vyskusat. Mam tam pristup? Lebo chodia mi nejake emaily s poctom free CPU hodin a tak
+Jakub — 30/09/2026, 12:12
+jj, je to celkom jednoduche to setupnut. Mam aj guide od dalsieho studenta co so mnou spolupracuje, ale ked som to skusal sam tak som sa tam dostal za 5 min.
+Zalezi jak sa ti chce, resp ci mas cas. Mozem to aj ja skusit deploynut ak je to ready.
+Kludne by som tam minul 300- 400 node hours (1200-1600 gpu hours)  hours v nejakej prvej iteracii. Ale mal by to byt cca overeny recept, cize by sme sa mali spytat minimalne claude a chatGPT ci tie hyperparametre z mensieho modelu mozme preniest na vacsi.
+Jakub — 30/09/2026, 12:38
+Isambard-AI onboarding — the short version
+For someone who already knows Slurm. Sources: getting started, login guide, job scheduling,
+
+
+isambard_onboarding (1).md
+6 KB
+Markek — Yesterday at 16:59
+dik pozriem na to. Teraz dalsich par dni a cez vikend budem mat dost casu lebo vo valencii je red alert kvoli pocasiu a vsetko bude zavrete/zrusene vratane skoly a vsetkych vyletov 😅
+Jakub — Yesterday at 18:05
+wtf 😄 jako je moc teplo ci co?
+Markek — Yesterday at 18:06
+niee len tu vo Valencii prsi super narazovo v Septemberi a Oktobri. Pred 2 rokmi povodne nedaleko zabili 200 ludi. Ale tak zle by to nemalo byt :D
+ale urcite zatopi metro a dost vela ulic
+Jakub — Yesterday at 18:07
+ok, daj vediet, mozme si k tomu pripadne zavolat aj neskor. Bolo by super to nejak zlomit... keby vieme spravit rozumny pretraining filtering + natrenovat zopar domain specialistov. Casto poslednou dobou pocuvam od ludi, ze by o to mali zaujem.
+Jakub — Yesterday at 18:08
+uff
+mozme si skusit znasobit tie data .. vygenerovat cez frontier mdely
+Mam nejake API kredity, co by sme mohli pouzit.
