@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Top-64 teacher logprobs for packed shards. Two GPUs, vLLM 0.17.
-# MAX_SHARDS=1 scores only the first shard (the smoke-sized KD run).
-#SBATCH --job-name=teacher_logits
+# 0-shot and 5-shot letter scores for medical MMLU and MedQA. Two GPUs.
+#SBATCH --job-name=teacher_mc
 #SBATCH --account=brics.u6wc
 #SBATCH --gpus=2
 #SBATCH --cpus-per-task=16
-#SBATCH --time=24:00:00
-#SBATCH --output=/projects/u6wc/savants/logs/teacher_logits_%j.log
+#SBATCH --time=06:00:00
+#SBATCH --output=/projects/u6wc/savants/logs/teacher_mc_%j.log
 
 set -euo pipefail
 export PATH="$HOME/.local/bin:$PATH"
@@ -26,10 +25,4 @@ source "$SAVANTS/venv-vllm126/bin/activate"
 NVIDIA_LIBS=$(find "$SAVANTS/venv-vllm126/lib/python3.12/site-packages/nvidia" -type d -name lib | paste -sd:)
 export LD_LIBRARY_PATH="${NVIDIA_LIBS}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-ARGS=()
-if [[ -n "${MAX_SHARDS:-}" ]]; then ARGS+=(--max-shards "$MAX_SHARDS"); fi
-python "$SAVANTS/scripts/precompute_logits.py" \
-    --shards "${SHARDS:-$SAVANTS/data/packed/python}" \
-    --model "$SAVANTS/models/Qwen3.5-35B-A3B-Base" \
-    --out "${LOGIT_DIR:-$SAVANTS/data/logits/python}" \
-    "${ARGS[@]}"
+python "$SAVANTS/scripts/teacher_mc_eval.py"

@@ -4,7 +4,7 @@
 #SBATCH --account=brics.u6wc
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=16
-#SBATCH --time=04:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=/projects/u6wc/savants/logs/pilot_0.6b_%j.log
 
 set -euo pipefail
@@ -13,7 +13,7 @@ module load cuda/12.6
 SAVANTS="$PROJECTDIR/savants"
 export UV_CACHE_DIR="$SAVANTS/uv-cache"
 export HF_HUB_OFFLINE=1
-CONFIG="${CONFIG:-$SAVANTS/config/pilot_0.6b_smoke.yaml}"
+CONFIG="${CONFIG:-$SAVANTS/config/pilot_0.6b.yaml}"
 
 cd "$SAVANTS"
 if [[ ! -x venv-train/bin/python ]]; then
