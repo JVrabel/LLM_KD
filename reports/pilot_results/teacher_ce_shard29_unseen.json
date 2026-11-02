@@ -1,0 +1,1 @@
+{"rows": 1624, "tokens": 6650280, "cover": 0.9612435867361976, "teacher_ce_covered": 1.4047700578948696, "mean_neg_lp64": 10.12354924576484, "ce_lower_bound": 1.742678667255798, "ce_if_uncovered_lp64_minus2": 1.8201914937834027, "ce_if_uncovered_lp64_minus4": 1.8977043203110076}

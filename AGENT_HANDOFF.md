@@ -410,3 +410,26 @@ the literature.
 - Logs: `/projects/u6wc/savants/logs/<jobname>_<jobid>.log`.
 - Trainer source of truth to edit: `src/train_kd.py`.
 - Cluster trainer: `/projects/u6wc/savants/src/train_kd.py`.
+
+## 2 Nov 2026: scaling fit and report
+
+Nothing is queued or running. Jakub (2 Nov) capped extra spend at about
+1,000–1,500 GPU-hours, one domain, and asked for a scaling-law fit and a 1–2
+page report before any larger run. Both done without new jobs:
+
+- `reports/PILOT_REPORT.md`: the report (method, data, training, results,
+  scaling fit, options).
+- `scripts/isambard/fit_scaling.py` + `reports/pilot_results/curves/*.csv`
+  + `reports/pilot_results/scaling_fit.json`: the fit (beta 0.40 passes the
+  half-fit check; 1.7B KD predicted 2.36 on shard 31 at 9B tokens vs 2.55 now).
+- `reports/pilot_results/teacher_ce_shard29_unseen.json`: teacher CE bracket
+  (1.74 lower bound, ~1.8–1.9) on the same unseen rows where the 1.7B KD
+  student scores 2.24. Computed on the login node from the stored logits.
+
+Proposed next step (not approved yet): continue the 0.6B and 1.7B distilled
+shuffled students for two more epochs over the existing logit-covered packs
+(3.7B tokens total, about 170 GPU-h, no new logits) with shard-31 loss and
+answer-text exams every 0.5B tokens; decide on the 9B PubMed run from that
+curve. The trainer's cursor supports epochs (`epoch` in the cursor state), so
+this is a config with `steps: 91551` resumed from `step_0030517.pt`; note the
+LR schedule would restart its decay phase unless `decay_start_step` is moved.

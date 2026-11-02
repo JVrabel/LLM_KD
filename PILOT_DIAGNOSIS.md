@@ -466,3 +466,28 @@ Reading:
   roughly 30 to 33 for any model in this grid; held-out loss, not the exams,
   is the measurement that separates the configurations. Larger absolute
   exam numbers need a larger token budget, as estimated in section 4.
+
+## 2 Nov 2026: scaling fit on the shuffled pilots
+
+Jakub asked for a Chinchilla-style fit on what has finished. Script
+`scripts/isambard/fit_scaling.py`, inputs `reports/pilot_results/curves/*.csv`
+(the step/loss lines of every pilot log) and the shard-31 held-out sweeps,
+output `reports/pilot_results/scaling_fit.json`. Fit `E + B * D^-beta` on the
+smoothed training CE of the constant-LR phase (0.03–0.9B tokens), then map to
+unseen shard 31 with the measured offset (+0.51 KD, +0.70 NTP) and the
+measured anneal gain (0.11–0.15 nats).
+
+- Fit on the first 0.45B tokens, predict 0.9B: free beta (0.64–0.75)
+  over-predicts the loss by 0.10–0.14; beta 0.28 under-predicts by
+  0.06–0.13; beta 0.40 is within 0.01 for both 1.7B runs. The exponent
+  cannot be identified from one decade of tokens, so beta = 0.40 is used.
+- 1.7B distilled, shard 31: 2.55 measured at 1B; predicted 2.44 at 3B, 2.36
+  at 9B, 2.31 at 20B, 2.28 at 50B; asymptote 2.19.
+- Teacher on the unseen rows of shard 29, from its stored top-64 logits:
+  covered CE 1.405 at 96.1% coverage, mean 64th log-prob −10.1, so the full CE
+  is at least 1.74 and about 1.8–1.9 (`reports/pilot_results/teacher_ce_shard29_unseen.json`).
+  The 1.7B distilled student is 2.24 on those rows: a 0.44-nat gap, of
+  which 9B tokens are predicted to close about half.
+- Two-size joint Chinchilla fit (weakly determined): compute-optimal for the
+  9B-token 1.7B budget is 2.3B parameters at 5.5B tokens.
+- Written up in `reports/PILOT_REPORT.md` (the 1–2 pager Jakub asked for).
