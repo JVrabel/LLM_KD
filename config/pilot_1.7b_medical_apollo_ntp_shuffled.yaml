@@ -1,0 +1,29 @@
+# Next-token baseline on Apollo for the 1.7B student, same budget and
+# schedule as pilot_1.7b_medical_apollo_ntp, but sequences are drawn in a seeded
+# random order across the Apollo text pack and the decontaminated Apollo
+# question-answer pack (exam test questions removed, 30 Oct 2026). The run is
+# about 34 h at 15 steps/min, so it is submitted as two 24 h jobs with
+# RESUME_LATEST=1 and the second chained with --dependency=afterany.
+seed: 42
+model_size: 1.7b
+data:
+  - dir: /projects/u6wc/savants/data/packed/medical_apollo
+    logit_dir: /projects/u6wc/savants/data/logits/medical_apollo
+    shards: 30
+  - dir: /projects/u6wc/savants/data/packed/medical_apollo_qa_clean
+    logit_dir: /projects/u6wc/savants/data/logits/medical_apollo_qa_clean
+output_dir: /projects/u6wc/savants/runs/pilot_1.7b_medical_apollo_ntp_shuffled
+training:
+  shuffle: true
+  steps: 30517
+  warmup_steps: 300
+  decay_start_step: 27465
+  learning_rate: 6.0e-4
+  lr_floor: 0.1
+  batch_sequences: 8
+  grad_accumulation_steps: 1
+  kd_ratio: 0.0
+  temperature: 1.0
+  logit_chunk: 1024
+  log_every: 20
+  save_every: 1000

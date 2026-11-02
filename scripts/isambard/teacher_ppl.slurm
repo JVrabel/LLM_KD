@@ -9,10 +9,11 @@
 
 set -euo pipefail
 export PATH="$HOME/.local/bin:$PATH"
-module load gcc-native/13.2
+module load gcc-native/14.2
 module load cuda/12.6
 export CUDA_HOME=/opt/nvidia/hpc_sdk/Linux_aarch64/24.11/cuda/12.6
-export CUDAHOSTCXX="$(command -v g++)"
+export NVCC_PREPEND_FLAGS="-allow-unsupported-compiler"
+export CUDAHOSTCXX="${GCC_PATH}/g++"
 export CXX="$CUDAHOSTCXX"
 export CC="$(command -v gcc)"
 SAVANTS="$PROJECTDIR/savants"

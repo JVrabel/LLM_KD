@@ -1,0 +1,22 @@
+# 60-step smoke of the shuffled distillation path on the real Apollo pack:
+# random reads across all 30 logit shards. Checks throughput and the save path.
+seed: 42
+model_size: 0.6b
+data:
+  - dir: /projects/u6wc/savants/data/packed/medical_apollo
+    logit_dir: /projects/u6wc/savants/data/logits/medical_apollo
+    shards: 30
+output_dir: /projects/u6wc/savants/runs/smoke_0.6b_kd_shuffled
+training:
+  shuffle: true
+  steps: 60
+  warmup_steps: 10
+  decay_start_step: 50
+  learning_rate: 6.0e-4
+  lr_floor: 0.1
+  batch_sequences: 8
+  kd_ratio: 1.0
+  temperature: 1.0
+  logit_chunk: 1024
+  log_every: 10
+  save_every: 60

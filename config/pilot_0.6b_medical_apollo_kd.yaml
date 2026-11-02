@@ -1,0 +1,19 @@
+# Pure distillation on Apollo for the 0.6B student. Same budget and schedule
+# as the Apollo next-token run. kd_ratio 1.0 is forward KL only.
+seed: 42
+model_size: 0.6b
+data_dir: /projects/u6wc/savants/data/packed/medical_apollo
+logit_dir: /projects/u6wc/savants/data/logits/medical_apollo
+output_dir: /projects/u6wc/savants/runs/pilot_0.6b_medical_apollo_kd
+training:
+  steps: 30517
+  warmup_steps: 300
+  decay_start_step: 27465
+  learning_rate: 6.0e-4
+  lr_floor: 0.1
+  batch_sequences: 8
+  kd_ratio: 1.0
+  temperature: 1.0
+  logit_chunk: 1024
+  log_every: 20
+  save_every: 1000

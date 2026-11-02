@@ -1,0 +1,828 @@
+{
+  "checkpoint": "/projects/u6wc/savants/runs/pilot_0.6b_kd/step_0030517.pt",
+  "n": 164,
+  "passed": 11,
+  "pass_at_1": 0.0671,
+  "details": [
+    {
+      "task_id": "HumanEval/0",
+      "passed": false,
+      "completion": "    return any(abs(x - y) <= threshold for x, y in zip(numbers, numbers[1:]))\n\n"
+    },
+    {
+      "task_id": "HumanEval/1",
+      "passed": false,
+      "completion": "    return [x.strip() for x in paren_string.split(',')]\n\n"
+    },
+    {
+      "task_id": "HumanEval/2",
+      "passed": false,
+      "completion": "    if number == 0:\n        return 0\n    if number == 1:\n        return 1\n    if number == 2:\n        return 2\n    if number == 3:\n        return 3\n    if number == 4:\n        return 4\n    if number == 5:\n        return 5\n    if number == 6:\n        return 6\n    if number == 7:\n        return 7\n    if number == 8:\n        return 8\n    if number == 9:\n        return 9\n    if number == 10:\n        return 10\n    if number == 11:\n        return 11\n    if number == 12:\n        return 12\n    if number == 13:\n        return 13\n    if number == 14:\n        return 14\n    if number == 15:\n        return 15\n    if number == 16:\n        return 16\n    if number == 17:\n        return 17\n    if number == 1"
+    },
+    {
+      "task_id": "HumanEval/3",
+      "passed": false,
+      "completion": "    return operations[0] < 0\n\n"
+    },
+    {
+      "task_id": "HumanEval/4",
+      "passed": false,
+      "completion": "    return sum(abs(x - x_mean) for x, x_mean in zip(numbers, numbers[1:])) / len(numbers)\n\n"
+    },
+    {
+      "task_id": "HumanEval/5",
+      "passed": false,
+      "completion": "    return [i + delimeter for i in numbers]\n\n"
+    },
+    {
+      "task_id": "HumanEval/6",
+      "passed": false,
+      "completion": "    return [int(x) for x in paren_string.split()]\n\n"
+    },
+    {
+      "task_id": "HumanEval/7",
+      "passed": false,
+      "completion": "    return [string for string in strings if string.startswith(substring)]\n\n"
+    },
+    {
+      "task_id": "HumanEval/8",
+      "passed": false,
+      "completion": "    if not numbers:\n        return 0, 1\n    return sum(numbers), sum(numbers) * sum(numbers)\n\n"
+    },
+    {
+      "task_id": "HumanEval/9",
+      "passed": false,
+      "completion": "    result = []\n    for i in range(len(numbers)):\n        if numbers[i] > numbers[i - 1]:\n            result.append(numbers[i])\n        else:\n            result.append(numbers[i - 1])\n    return result\n\n"
+    },
+    {
+      "task_id": "HumanEval/10",
+      "passed": false,
+      "completion": "    if is_palindrome(string):\n        return string\n    else:\n        return make_palindrome(string[::-1])\n\n"
+    },
+    {
+      "task_id": "HumanEval/11",
+      "passed": false,
+      "completion": "    return ''.join([str(int(a[i] ^ int(b[i]))) for i in range(len(a))])\n\n"
+    },
+    {
+      "task_id": "HumanEval/12",
+      "passed": false,
+      "completion": "    if len(strings) == 0:\n        return None\n    longest = strings[0]\n    for string in strings[1:]:\n        if len(string) > longest:\n            longest = string\n    return longest\n\n"
+    },
+    {
+      "task_id": "HumanEval/13",
+      "passed": false,
+      "completion": "    if a == 0:\n        return b\n    if b == 0:\n        return a\n    return gcd(a, b)\n\n"
+    },
+    {
+      "task_id": "HumanEval/14",
+      "passed": false,
+      "completion": "    return [s for s in string.split(' ') if len(s) > 0]\n\n"
+    },
+    {
+      "task_id": "HumanEval/15",
+      "passed": false,
+      "completion": "    return ' '.join([str(i) for i in range(0, n)])\n\n"
+    },
+    {
+      "task_id": "HumanEval/16",
+      "passed": false,
+      "completion": "    return len(set(string))\n\n"
+    },
+    {
+      "task_id": "HumanEval/17",
+      "passed": false,
+      "completion": "    # Your task is to parse this string and return list of integers corresponding to how many beats does each\n    # not last.\n    # Your task is to parse this string and return list of integers corresponding to how many beats does each\n    # not last.\n    # Your task is to parse this string and return list of integers corresponding to how many beats does each\n    # not last.\n    # Your task is to parse this string and return list of integers corresponding to how many beats does each\n    # not last.\n    # Your task is to parse this string and return list of integers corresponding to how many beats does each\n    # not last.\n    # Your task is to parse this string and return list of integers corresponding to how many beats does each\n    # not last.\n    # Your task is to parse this string and return list of integers corresponding to how many beats does each\n    # not last.\n    # Your task is to parse this string and return list of integers corresponding to how many beats does each\n    # not last.\n    # Your task is to parse this string and return list of integers corresponding to how many beats does each\n    # not last.\n    # Your task"
+    },
+    {
+      "task_id": "HumanEval/18",
+      "passed": false,
+      "completion": "    return len(re.findall(substring, string))\n\n"
+    },
+    {
+      "task_id": "HumanEval/19",
+      "passed": false,
+      "completion": "    numbers = numbers.split()\n    numbers.sort()\n    return ' '.join(numbers)\n\n"
+    },
+    {
+      "task_id": "HumanEval/20",
+      "passed": false,
+      "completion": "    numbers = sorted(numbers)\n    if len(numbers) < 2:\n        return numbers[0], numbers[0]\n    if numbers[0] == numbers[1]:\n        return numbers[0], numbers[1]\n    if numbers[0] < numbers[1]:\n        return numbers[0], numbers[1]\n    return numbers[1], numbers[0]\n\n"
+    },
+    {
+      "task_id": "HumanEval/21",
+      "passed": false,
+      "completion": "    return [x / 1000 for x in numbers]\n\n"
+    },
+    {
+      "task_id": "HumanEval/22",
+      "passed": false,
+      "completion": "    return [int(x) for x in values]\n\n"
+    },
+    {
+      "task_id": "HumanEval/23",
+      "passed": true,
+      "completion": "    return len(string)\n\n"
+    },
+    {
+      "task_id": "HumanEval/24",
+      "passed": false,
+      "completion": "    if n == 1:\n        return 1\n    if n % 2 == 0:\n        return largest_divisor(n // 2)\n    return largest_divisor(n // 2 + 1)\n\n"
+    },
+    {
+      "task_id": "HumanEval/25",
+      "passed": false,
+      "completion": "    factors = []\n    while n > 1:\n        factors.append(n % 2)\n        n //= 2\n    return factors\n\n"
+    },
+    {
+      "task_id": "HumanEval/26",
+      "passed": false,
+      "completion": "    return list(set(numbers))\n\n"
+    },
+    {
+      "task_id": "HumanEval/27",
+      "passed": false,
+      "completion": "    return string.lower().replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ', '').replace(' ',"
+    },
+    {
+      "task_id": "HumanEval/28",
+      "passed": false,
+      "completion": "    return ' '.join(strings)\n\n"
+    },
+    {
+      "task_id": "HumanEval/29",
+      "passed": true,
+      "completion": "    return [string for string in strings if string.startswith(prefix)]\n\n"
+    },
+    {
+      "task_id": "HumanEval/30",
+      "passed": true,
+      "completion": "    return [x for x in l if x > 0]\n\n"
+    },
+    {
+      "task_id": "HumanEval/31",
+      "passed": false,
+      "completion": "    return n > 1 and n % 2 == 0\n\n"
+    },
+    {
+      "task_id": "HumanEval/32",
+      "passed": false,
+      "completion": "    zero = find_zero([x for x in xs if x != 0])\n    if zero:\n        return zero\n    else:\n        return -1\n\n"
+    },
+    {
+      "task_id": "HumanEval/33",
+      "passed": false,
+      "completion": "    return sorted(l, key=lambda x: x % 3)\n\n"
+    },
+    {
+      "task_id": "HumanEval/34",
+      "passed": true,
+      "completion": "    return sorted(set(l))\n\n"
+    },
+    {
+      "task_id": "HumanEval/35",
+      "passed": true,
+      "completion": "    return max(l, key=lambda x: x)\n\n"
+    },
+    {
+      "task_id": "HumanEval/36",
+      "passed": false,
+      "completion": "    return sum([int(digit) for digit in str(n)]) % 11 or 13\n\n"
+    },
+    {
+      "task_id": "HumanEval/37",
+      "passed": false,
+      "completion": "    l = sorted(l)\n    return l[1:] + l[0:-1]\n\n"
+    },
+    {
+      "task_id": "HumanEval/38",
+      "passed": false,
+      "completion": "    # split string to groups. Each of length 3.\n    groups = [s[(3 * i):min((3 * i + 3), len(s))] for i in range((len(s) + 2) // 3)]\n    # cycle elements in each group. Unless group has fewer elements than 3.\n    groups = [(group[1:] + group[0]) if len(group) == 3 else group for group in groups]\n    return \"\".join(groups)\n\n"
+    },
+    {
+      "task_id": "HumanEval/39",
+      "passed": false,
+      "completion": "    if n < 2:\n        return n\n    if n == 2:\n        return 2\n    if n % 2 == 0:\n        return 3 + prime_fib(n // 2)\n    else:\n        return 5 + prime_fib(n // 2 - 1)\n\n"
+    },
+    {
+      "task_id": "HumanEval/40",
+      "passed": false,
+      "completion": "    return sum(l) == 0\n\n"
+    },
+    {
+      "task_id": "HumanEval/41",
+      "passed": false,
+      "completion": "    collisions = 0\n    for i in range(n):\n        if i == 0:\n            collision = 0\n        elif i == n - 1:\n            collision = 1\n        else:\n            collision = 0\n        collisions += collision\n    return collisions\n\n"
+    },
+    {
+      "task_id": "HumanEval/42",
+      "passed": true,
+      "completion": "    return [x + 1 for x in l]\n\n"
+    },
+    {
+      "task_id": "HumanEval/43",
+      "passed": false,
+      "completion": "    return sum([i for i in l if i != 0]) == 0\n\n"
+    },
+    {
+      "task_id": "HumanEval/44",
+      "passed": false,
+      "completion": "    if base < 10:\n        return str(x) + str(base)\n    else:\n        return str(x) + str(base) + str(base)\n\n"
+    },
+    {
+      "task_id": "HumanEval/45",
+      "passed": false,
+      "completion": "    return a * h\n\n"
+    },
+    {
+      "task_id": "HumanEval/46",
+      "passed": false,
+      "completion": "    if n == 0:\n        return 0\n    elif n == 1:\n        return 1\n    elif n == 2:\n        return 1\n    elif n == 3:\n        return 1\n    elif n == 4:\n        return 2\n    elif n == 5:\n        return 3\n    elif n == 6:\n        return 5\n    elif n == 7:\n        return 8\n    else:\n        return fib4(n - 1) + fib4(n - 2) + fib4(n - 3) + fib4(n - 4)\n\n"
+    },
+    {
+      "task_id": "HumanEval/47",
+      "passed": false,
+      "completion": "    if len(l) == 0:\n        return None\n    if len(l) == 1:\n        return l[0]\n    if len(l) % 2 == 0:\n        return l[int(len(l) / 2)]\n    else:\n        return (l[int(len(l) / 2)] + l[int(len(l) / 2 - 1)]) / 2.0\n\n"
+    },
+    {
+      "task_id": "HumanEval/48",
+      "passed": true,
+      "completion": "    return text == text[::-1]\n\n"
+    },
+    {
+      "task_id": "HumanEval/49",
+      "passed": false,
+      "completion": "    return (n * (n - 1)) % p\n\n"
+    },
+    {
+      "task_id": "HumanEval/50",
+      "passed": false,
+      "completion": "    return \"\".join([chr(((ord(ch) - ord(\"a\")) % 26) + ord(\"a\")) for ch in s])\n\n"
+    },
+    {
+      "task_id": "HumanEval/51",
+      "passed": false,
+      "completion": "    vowels = 'aeiouAEIOU'\n    return ''.join([c for c in text if c in vowels])\n\n"
+    },
+    {
+      "task_id": "HumanEval/52",
+      "passed": true,
+      "completion": "    return all(x < t for x in l)\n\n"
+    },
+    {
+      "task_id": "HumanEval/53",
+      "passed": true,
+      "completion": "    return x + y\n\n"
+    },
+    {
+      "task_id": "HumanEval/54",
+      "passed": false,
+      "completion": "    return len(s0) == len(s1) and s0 == s1\n\n"
+    },
+    {
+      "task_id": "HumanEval/55",
+      "passed": true,
+      "completion": "    if n < 2:\n        return n\n    return fib(n - 1) + fib(n - 2)\n\n"
+    },
+    {
+      "task_id": "HumanEval/56",
+      "passed": false,
+      "completion": "    for bracket in brackets:\n        if bracket == \"<\":\n            return True\n        if bracket == \">\":\n            return False\n    return True\n\n"
+    },
+    {
+      "task_id": "HumanEval/57",
+      "passed": false,
+      "completion": "    return all(x < y for x, y in zip(l, l[1:]))\n\n"
+    },
+    {
+      "task_id": "HumanEval/58",
+      "passed": true,
+      "completion": "    return sorted(set(l1) & set(l2))\n\n"
+    },
+    {
+      "task_id": "HumanEval/59",
+      "passed": false,
+      "completion": "    if n < 2:\n        return 2\n    if n == 2:\n        return 2\n    if n == 3:\n        return 3\n    if n == 4:\n        return 4\n    if n == 5:\n        return 5\n    if n == 6:\n        return 6\n    if n == 7:\n        return 7\n    if n == 8:\n        return 8\n    if n == 9:\n        return 9\n    if n == 10:\n        return 10\n    if n == 11:\n        return 11\n    if n == 12:\n        return 12\n    if n == 13:\n        return 13\n    if n == 14:\n        return 14\n    if n == 15:\n        return 15\n    if n == 16:\n        return 16\n    if n == 17:\n        return 17\n    if n == 18:\n        return 18\n    if n =="
+    },
+    {
+      "task_id": "HumanEval/60",
+      "passed": false,
+      "completion": "    return sum(n)\n\n"
+    },
+    {
+      "task_id": "HumanEval/61",
+      "passed": false,
+      "completion": "    for bracket in brackets:\n        if bracket == \"(\" or bracket == \")\" or bracket == \"(\":\n            return True\n    return False\n\n"
+    },
+    {
+      "task_id": "HumanEval/62",
+      "passed": false,
+      "completion": "    return [x[1] - x[0] for x in xs]\n\n"
+    },
+    {
+      "task_id": "HumanEval/63",
+      "passed": false,
+      "completion": "    if n < 0:\n        raise ValueError(\"n must be a non-negative integer\")\n    if n == 0:\n        return 0\n    if n == 1:\n        return 1\n    if n == 2:\n        return 2\n    if n == 3:\n        return 3\n    if n == 4:\n        return 5\n    if n == 5:\n        return 8\n    if n == 8:\n        return 13\n    if n == 13:\n        return 19\n    if n == 19:\n        return 21\n    if n == 21:\n        return 24\n    if n == 24:\n        return 29\n    if n == 31:\n        return 33\n    if n == 33:\n        return 39\n    if n == 39:\n        return 43\n    if n == 43:\n        return 49\n    if n == 49:\n        return 53\n    if n == 53:"
+    },
+    {
+      "task_id": "HumanEval/64",
+      "passed": false,
+      "completion": "    vowels = \"aeiou\"\n    return len([i for i in s if i in vowels])\n"
+    },
+    {
+      "task_id": "HumanEval/65",
+      "passed": false,
+      "completion": "    if shift > len(str(x)):\n        return str(x)\n    return str(x)[shift:] + str(x)[0:shift]\n\n"
+    },
+    {
+      "task_id": "HumanEval/66",
+      "passed": false,
+      "completion": "    return sum([ord(c) for c in s])\n\n"
+    },
+    {
+      "task_id": "HumanEval/67",
+      "passed": false,
+      "completion": "    if s == \"0\":\n        return 0\n    if s == \"1\":\n        return 1\n    if s == \"2\":\n        return 2\n    if s == \"3\":\n        return 3\n    if s == \"4\":\n        return 4\n    if s == \"5\":\n        return 5\n    if s == \"6\":\n        return 6\n    if s == \"7\":\n        return 7\n    if s == \"8\":\n        return 8\n    if s == \"9\":\n        return 9\n    if s == \"10\":\n        return 10\n    if s == \"11\":\n        return 11\n    if s == \"12\":\n        return 12\n    if s == \"13\":\n        return 13\n    if s == \"14\":\n        return 14\n    if s == \"15\":\n        return 15\n    if s == \"16\":\n        return 16\n    if s == \"17\":\n        return 17\n    if s == \"1"
+    },
+    {
+      "task_id": "HumanEval/68",
+      "passed": false,
+      "completion": "    # Write your code here\n    if not arr:\n        return []\n    if len(arr) == 1:\n        return [arr[0]]\n    if arr[0] < arr[1]:\n        return [arr[0]]\n    else:\n        return [arr[1]]\n"
+    },
+    {
+      "task_id": "HumanEval/69",
+      "passed": false,
+      "completion": "    if not lst:\n        return -1\n    max_val = max(lst)\n    for i in range(len(lst)):\n        if lst[i] > max_val:\n            return i\n    return -1"
+    },
+    {
+      "task_id": "HumanEval/70",
+      "passed": false,
+      "completion": "    if not lst:\n        return lst\n    if len(lst) == 1:\n        return [lst[0]]\n    min_val = lst[0]\n    max_val = lst[0]\n    for i in range(1, len(lst)):\n        if lst[i] < min_val:\n            min_val = lst[i]\n        if lst[i] > max_val:\n            max_val = lst[i]\n    return [min_val, max_val]\n\n"
+    },
+    {
+      "task_id": "HumanEval/71",
+      "passed": false,
+      "completion": "    if a == b or b == c or c == a:\n        return 0\n    if a > b or b > c or c > a:\n        return -1\n    if a == b or b == c or c == a:\n        return 1\n    if a > b or b > c or c == a:\n        return -1\n    if a == b or b == c or c == a:\n        return 2\n    if a > b or b > c or c == a:\n        return -1\n    if a == b or b == c or c == a:\n        return 3\n    if a > b or b > c or c == a:\n        return -1\n    if a == b or b == c or c == a:\n        return 4\n    if a > b or b > c or c == a:\n        return -1\n    if a == b or b == c or c == a:\n        return 5\n    if a > b or b > c or c == a:\n        return -1\n    if a == b or b == c or c == a:\n       "
+    },
+    {
+      "task_id": "HumanEval/72",
+      "passed": false,
+      "completion": "    if q == 0:\n        return True\n    if w == 0:\n        return False\n    if w > q:\n        return False\n    if w < q:\n        return True\n    return False\n"
+    },
+    {
+      "task_id": "HumanEval/73",
+      "passed": false,
+      "completion": "    # write your code here\n    arr = list(arr)\n    for i in range(len(arr)):\n        if arr[i] != arr[i-1]:\n            arr[i] = arr[i-1]\n    return arr\n"
+    },
+    {
+      "task_id": "HumanEval/74",
+      "passed": false,
+      "completion": "    if len(lst1) == 0:\n        return lst2\n    if len(lst2) == 0:\n        return lst1\n    if len(lst1) == 1:\n        return lst2\n    if len(lst2) == 1:\n        return lst1\n    if len(lst1) == 2:\n        return lst2\n    if len(lst2) == 2:\n        return lst1 + lst2\n    if len(lst1) == 3:\n        return lst2 + lst1\n    if len(lst2) == 3:\n        return lst1 + lst2\n    if len(lst1) == 4:\n        return lst2 + lst1\n    if len(lst2) == 4:\n        return lst1 + lst2\n    if len(lst1) == 5:\n        return lst2 + lst1\n    if len(lst2) == 5:\n        return lst1 + lst2\n    if len(lst1) == 6:\n        return lst2 + lst1\n    if len(lst2) == 6:\n        return lst1 + lst2\n    if len(lst1"
+    },
+    {
+      "task_id": "HumanEval/75",
+      "passed": false,
+      "completion": "    return a % 3 == 0 and a % 5 == 0\n\n"
+    },
+    {
+      "task_id": "HumanEval/76",
+      "passed": false,
+      "completion": "    if x == 0:\n        return True\n    if x == 1:\n        return False\n    if x == 2:\n        return True\n    if x == 3:\n        return False\n    if x == 4:\n        return True\n    if x == 5:\n        return False\n    if x == 6:\n        return True\n    if x == 7:\n        return False\n    if x == 8:\n        return True\n    if x == 9:\n        return False\n    if x == 10:\n        return True\n    if x == 11:\n        return False\n    if x == 12:\n        return True\n    if x == 13:\n        return False\n    if x == 14:\n        return True\n    if x == 15:\n        return False\n    if x == 16:\n        return True\n    if x == 17:\n        return False\n    if x == 18:\n        return True\n    if x == 19:\n        return False\n    if x == 2"
+    },
+    {
+      "task_id": "HumanEval/77",
+      "passed": false,
+      "completion": "    if a < 0:\n        return False\n    if a == 0:\n        return True\n    if a == 1:\n        return True\n    if a == 2:\n        return True\n    if a == 3:\n        return True\n    if a == 4:\n        return True\n    if a == 5:\n        return True\n    if a == 6:\n        return True\n    if a == 7:\n        return True\n    if a == 8:\n        return True\n    if a == 9:\n        return True\n    if a == 10:\n        return True\n    if a == 11:\n        return True\n    if a == 12:\n        return True\n    if a == 13:\n        return True\n    if a == 14:\n        return True\n    if a == 15:\n        return True\n    if a == 16:\n        return True\n    if a == 17:\n        return True\n    if a == 18:\n        return True\n    if a == 19"
+    },
+    {
+      "task_id": "HumanEval/78",
+      "passed": false,
+      "completion": "    if num == \"\":\n        return 0\n    if num[0] == \"0\":\n        return 0\n    if num[0] == \"1\":\n        return 1\n    if num[0] == \"2\":\n        return 2\n    if num[0] == \"3\":\n        return 3\n    if num[0] == \"4\":\n        return 4\n    if num[0] == \"5\":\n        return 5\n    if num[0] == \"6\":\n        return 6\n    if num[0] == \"7\":\n        return 7\n    if num[0] == \"8\":\n        return 8\n    if num[0] == \"9\":\n        return 9\n    if num[0] == \"A\":\n        return 10\n    if num[0] == \"B\":\n        return 11\n    if num[0] == \"C\":\n        return 12\n    if num[0] == \"D\":\n        return 13\n    if num[0] == \"E\":\n        return 14"
+    },
+    {
+      "task_id": "HumanEval/79",
+      "passed": false,
+      "completion": "    binary = ''\n    for i in range(0, len(decimal), 2):\n        binary += '0' if decimal[i] == '1' else '1'\n    return binary\n\n"
+    },
+    {
+      "task_id": "HumanEval/80",
+      "passed": false,
+      "completion": "    if len(s) < 3:\n        return False\n    if s[0] == s[-1]:\n        return False\n    if s[0] == s[-2]:\n        return False\n    if s[0] == s[-3]:\n        return False\n    return True\n"
+    },
+    {
+      "task_id": "HumanEval/81",
+      "passed": false,
+      "completion": "    grade_equation = []\n    for grade in grades:\n        grade_equation.append(grade[0] + grade[1] + grade[2] + grade[3])\n    return grade_equation\n"
+    },
+    {
+      "task_id": "HumanEval/82",
+      "passed": false,
+      "completion": "    if len(string) == 1:\n        return True\n    if string[0] == string[-1]:\n        return False\n    for i in range(2, int(len(string) / 2) + 1):\n        if string[i] == string[i - 1]:\n            return False\n    return True\n\n"
+    },
+    {
+      "task_id": "HumanEval/83",
+      "passed": false,
+      "completion": "    return sum(1 for i in range(1, n+1) if n % i == 0)\n"
+    },
+    {
+      "task_id": "HumanEval/84",
+      "passed": false,
+      "completion": "    if N < 0:\n        return \"Negative number\"\n    if N == 0:\n        return \"0\"\n    if N == 1:\n        return \"1\"\n    if N == 2:\n        return \"11\"\n    if N == 3:\n        return \"111\"\n    if N == 4:\n        return \"1100\"\n    if N == 5:\n        return \"11001\"\n    if N == 6:\n        return \"110011\"\n    if N == 7:\n        return \"1100111\"\n    if N == 8:\n        return \"11001111\"\n    if N == 9:\n        return \"110011111\"\n    if N == 10:\n        return \"1100111111\"\n    if N == 11:\n        return \"11001111111\"\n    if N == 12:\n        return \"1100"
+    },
+    {
+      "task_id": "HumanEval/85",
+      "passed": false,
+      "completion": "    if len(lst) % 2 == 0:\n        return lst + [lst[-1]]\n    else:\n        return lst + [lst[-1] + 1]\n\n"
+    },
+    {
+      "task_id": "HumanEval/86",
+      "passed": false,
+      "completion": "    return ' '.join([w.replace(' ', '') for w in s.split()])\n\n"
+    },
+    {
+      "task_id": "HumanEval/87",
+      "passed": false,
+      "completion": "    if not lst:\n        return []\n    if x < 0:\n        x = len(lst) + x\n    if x == 0:\n        return [(0, 0)]\n    if x == 1:\n        return [(lst[0][0], 0)]\n    if x == 2:\n        return [(lst[0][0], lst[1][0])]\n    if x == 3:\n        return [(lst[0][0], lst[1][0], lst[2][0])]\n    if x == 4:\n        return [(lst[0][0], lst[1][0], lst[2][0], lst[3][0])]\n    if x == 5:\n        return [(lst[0][0], lst[1][0], lst[2][0], lst[3][0], lst[4][0])]\n    if x == 6:\n        return [(lst[0][0], lst[1][0], lst[2][0], lst[3][0], lst[4][0], lst[5][0])]\n    if x == 7:\n        return [("
+    },
+    {
+      "task_id": "HumanEval/88",
+      "passed": false,
+      "completion": "    if not array:\n        return array\n    if sum(array) % 2 == 0:\n        return array\n    else:\n        return [x for x in array if x % 2 == 0] + [x for x in array if x % 2 == 1]\n\n"
+    },
+    {
+      "task_id": "HumanEval/89",
+      "passed": false,
+      "completion": "    return ''.join([chr((ord(c) + 1) % 26 + 65) for c in s])\n"
+    },
+    {
+      "task_id": "HumanEval/90",
+      "passed": false,
+      "completion": "    if len(lst) == 0:\n        return None\n    elif len(lst) == 1:\n        return lst[0]\n    else:\n        return min(lst)\n"
+    },
+    {
+      "task_id": "HumanEval/91",
+      "passed": false,
+      "completion": "    # Your code here\n    return len([word for word in S.split() if word.lower() in ['i', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you', 'you',"
+    },
+    {
+      "task_id": "HumanEval/92",
+      "passed": false,
+      "completion": "    return lambda x, y, z: x == y and x == z\n\n"
+    },
+    {
+      "task_id": "HumanEval/93",
+      "passed": false,
+      "completion": "    message = message.lower()\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace(' ', '')\n    message = message.replace('"
+    },
+    {
+      "task_id": "HumanEval/94",
+      "passed": false,
+      "completion": "    # Your code here\n    sum = 0\n    for i in lst:\n        sum += i\n    return sum"
+    },
+    {
+      "task_id": "HumanEval/95",
+      "passed": false,
+      "completion": "    for key in dict:\n        if not isinstance(key, str):\n            return False\n    return True\n"
+    },
+    {
+      "task_id": "HumanEval/96",
+      "passed": false,
+      "completion": "    if n < 0:\n        raise ValueError(\"n must be non-negative\")\n    if n == 0:\n        return []\n    if n == 1:\n        return [1]\n    if n == 2:\n        return [2]\n    if n == 3:\n        return [3]\n    if n == 4:\n        return [4]\n    if n == 5:\n        return [5]\n    if n == 6:\n        return [6]\n    if n == 7:\n        return [7]\n    if n == 8:\n        return [8]\n    if n == 9:\n        return [9]\n    if n == 10:\n        return [10]\n    if n == 11:\n        return [11]\n    if n == 12:\n        return [12]\n    if n == 13:\n        return [13]\n    if n == 14:\n        return [14]\n    if n == 15:\n        return [15]\n    if n"
+    },
+    {
+      "task_id": "HumanEval/97",
+      "passed": false,
+      "completion": "    if a == 0:\n        return 0\n    if b == 0:\n        return 0\n    if a < 0:\n        a = -a\n    if b < 0:\n        b = -b\n    if a == b:\n        return a\n    if a < 0:\n        a = -a\n    if b < 0:\n        b = -b\n    if a == b:\n        return a\n    if a < 0:\n        a = -a\n    if b < 0:\n        b = -b\n    if a == b:\n        return a\n    if a < 0:\n        a = -a\n    if b < 0:\n        b = -b\n    if a == b:\n        return a\n    if a < 0:\n        a = -a\n    if b < 0:\n        b = -b\n    if a == b:\n        return a\n    if a < 0:\n        a = -a\n    if b < 0:\n        b = -b\n    if a == b:\n"
+    },
+    {
+      "task_id": "HumanEval/98",
+      "passed": false,
+      "completion": "    return sum([1 if s[i] in 'aeiou' else 0 for i in range(len(s))])\n"
+    },
+    {
+      "task_id": "HumanEval/99",
+      "passed": false,
+      "completion": "    if value == '0':\n        return 0\n    if value == '1':\n        return 1\n    if value == '2':\n        return 2\n    if value == '3':\n        return 3\n    if value == '4':\n        return 4\n    if value == '5':\n        return 5\n    if value == '6':\n        return 6\n    if value == '7':\n        return 7\n    if value == '8':\n        return 8\n    if value == '9':\n        return 9\n    if value == '10':\n        return 10\n    if value == '11':\n        return 11\n    if value == '12':\n        return 12\n    if value == '13':\n        return 13\n    if value == '14':\n        return 14\n    if value == '15':\n        return 15\n    if value == '16':\n        return 16\n    if value == '17':\n        return 17\n    if value == '1"
+    },
+    {
+      "task_id": "HumanEval/100",
+      "passed": false,
+      "completion": "    if n % 2 == 0:\n        return [n]\n    else:\n        return [n - 1] + make_a_pile(n - 1)\n\n"
+    },
+    {
+      "task_id": "HumanEval/101",
+      "passed": false,
+      "completion": "    return [word.strip() for word in s.split(',')]\n"
+    },
+    {
+      "task_id": "HumanEval/102",
+      "passed": false,
+      "completion": "    if x < y:\n        return x\n    else:\n        return y\n"
+    },
+    {
+      "task_id": "HumanEval/103",
+      "passed": false,
+      "completion": "    if n > m:\n        return -1\n    else:\n        return bin(n).replace('1', '1').replace('0', '0')\n"
+    },
+    {
+      "task_id": "HumanEval/104",
+      "passed": false,
+      "completion": "    return [x for x in x if x not in set([0])]\n"
+    },
+    {
+      "task_id": "HumanEval/105",
+      "passed": false,
+      "completion": "    if len(arr) == 0:\n        return arr\n    arr = sorted(arr)\n    res = []\n    for i in range(len(arr)):\n        if arr[i] == 1:\n            res.append(\"One\")\n        elif arr[i] == 2:\n            res.append(\"Two\")\n        elif arr[i] == 3:\n            res.append(\"Three\")\n        elif arr[i] == 4:\n            res.append(\"Four\")\n        elif arr[i] == 5:\n            res.append(\"Five\")\n        elif arr[i] == 6:\n            res.append(\"Six\")\n        elif arr[i] == 7:\n            res.append(\"Seven\")\n        elif arr[i] == 8:\n            res.append(\"Eight\")\n        elif arr[i] == 9:\n            res.append(\"Nine\")\n    return res\n"
+    },
+    {
+      "task_id": "HumanEval/106",
+      "passed": false,
+      "completion": "    if n % 2 == 0:\n        return [n]\n    else:\n        return [n * i for i in range(1, n + 1)]\n\n"
+    },
+    {
+      "task_id": "HumanEval/107",
+      "passed": false,
+      "completion": "    if n < 1:\n        return (0, 0)\n    if n == 1:\n        return (1, 1)\n    if n % 2 == 0:\n        return (n, 1)\n    else:\n        return (n, 2)\n\n"
+    },
+    {
+      "task_id": "HumanEval/108",
+      "passed": false,
+      "completion": "    return sum([int(x) for x in arr if x > 0])\n\n"
+    },
+    {
+      "task_id": "HumanEval/109",
+      "passed": false,
+      "completion": "    if len(arr) == 0:\n        return False\n    if len(arr) == 1:\n        return True\n    if arr[0] > arr[1]:\n        return False\n    for i in range(1, len(arr)):\n        if arr[i] > arr[i-1]:\n            return False\n    return True\n"
+    },
+    {
+      "task_id": "HumanEval/110",
+      "passed": false,
+      "completion": "    if len(lst1) == 0:\n        return \"NO\"\n    if len(lst2) == 0:\n        return \"NO\"\n    if len(lst1) == 1:\n        return \"NO\"\n    if len(lst2) == 1:\n        return \"NO\"\n    if len(lst1) == 2:\n        return \"NO\"\n    if len(lst2) == 2:\n        return \"NO\"\n    if len(lst1) == 3:\n        return \"NO\"\n    if len(lst2) == 3:\n        return \"NO\"\n    if len(lst1) == 4:\n        return \"NO\"\n    if len(lst2) == 4:\n        return \"NO\"\n    if len(lst1) == 5:\n        return \"NO\"\n    if len(lst2) == 5:\n        return \"NO\"\n    if len(lst1) == 6:\n        return \"NO\"\n    if len(lst2) == 6:\n        return \"NO\"\n    if len(lst1) == 7:\n        return \"NO\"\n   "
+    },
+    {
+      "task_id": "HumanEval/111",
+      "passed": false,
+      "completion": "    letters = test.split()\n    counts = {}\n    for letter in letters:\n        if letter in counts:\n            counts[letter] += 1\n        else:\n            counts[letter] = 1\n    return counts\n"
+    },
+    {
+      "task_id": "HumanEval/112",
+      "passed": false,
+      "completion": "    if len(s) != len(c):\n        return False\n    for i in range(len(s)):\n        if s[i] != c[i]:\n            return False\n    return True\n"
+    },
+    {
+      "task_id": "HumanEval/113",
+      "passed": false,
+      "completion": "    return [int(i) for i in lst]\n"
+    },
+    {
+      "task_id": "HumanEval/114",
+      "passed": false,
+      "completion": "    if not nums:\n        return 0\n    return sum(nums) - min(nums)\n\n"
+    },
+    {
+      "task_id": "HumanEval/115",
+      "passed": false,
+      "completion": "    # Write your code here\n    if not grid:\n        return 0\n    if not grid[0]:\n        return 0\n    if not grid[1]:\n        return 0\n    if not grid[2]:\n        return 0\n    if not grid[3]:\n        return 0\n    if not grid[4]:\n        return 0\n    if not grid[5]:\n        return 0\n    if not grid[6]:\n        return 0\n    if not grid[7]:\n        return 0\n    if not grid[8]:\n        return 0\n    if not grid[9]:\n        return 0\n    if not grid[10]:\n        return 0\n    if not grid[11]:\n        return 0\n    if not grid[12]:\n        return 0\n    if not grid[13]:\n        return 0\n    if not grid[14]:\n        return 0\n    if not grid[15]:\n        return 0\n    if not grid[16]:\n        return 0\n    if not grid[17]:\n       "
+    },
+    {
+      "task_id": "HumanEval/116",
+      "passed": false,
+      "completion": "    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code here\n    # Your code"
+    },
+    {
+      "task_id": "HumanEval/117",
+      "passed": false,
+      "completion": "    if not s:\n        return []\n    if len(s) == 1:\n        return [s]\n    if len(s) == 2:\n        return [s[0], s[1]]\n    if len(s) == 3:\n        return [s[0], s[1], s[2]]\n    if len(s) == 4:\n        return [s[0], s[1], s[2], s[3]]\n    if len(s) == 5:\n        return [s[0], s[1], s[2], s[3], s[4]]\n    if len(s) == 6:\n        return [s[0], s[1], s[2], s[3], s[4], s[5]]\n    if len(s) == 7:\n        return [s[0], s[1], s[2], s[3], s[4], s[5], s[6]]\n    if len(s) == 8:\n        return [s[0], s[1], s[2], s[3], s[4], s[5], s"
+    },
+    {
+      "task_id": "HumanEval/118",
+      "passed": false,
+      "completion": "    vowels = \"aeiouAEIOU\"\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels = vowels.replace(\" \", \"\")\n    vowels"
+    },
+    {
+      "task_id": "HumanEval/119",
+      "passed": false,
+      "completion": "    if not lst:\n        return 'No'\n    if not lst[0] and not lst[1]:\n        return 'No'\n    if not lst[0] and not lst[1]:\n        return 'No'\n    if not lst[0] and not lst[1]:\n        return 'No'\n    if not lst[0] and not lst[1]:\n        return 'No'\n    if not lst[0] and not lst[1]:\n        return 'No'\n    if not lst[0] and not lst[1]:\n        return 'No'\n    if not lst[0] and not lst[1]:\n        return 'No'\n    if not lst[0] and not lst[1]:\n        return 'No'\n    if not lst[0] and not lst[1]:\n        return 'No'\n    if not lst[0] and not lst[1]:\n        return 'No'\n    if not lst[0] and not lst[1]:\n        return 'No'\n    if not lst[0] and not lst[1]:\n        return 'No'\n    if not lst"
+    },
+    {
+      "task_id": "HumanEval/120",
+      "passed": false,
+      "completion": "    if k < 0:\n        raise ValueError(\"k must be non-negative\")\n    if k == 0:\n        return arr\n    if k == len(arr):\n        return arr\n    if k > len(arr):\n        raise ValueError(\"k must be less than len(arr)\")\n    if k == 1:\n        return arr[0]\n    if k == 2:\n        return arr[0] + arr[1]\n    if k == 3:\n        return arr[0] + arr[1] + arr[2]\n    if k == 4:\n        return arr[0] + arr[1] + arr[2] + arr[3]\n    if k == 5:\n        return arr[0] + arr[1] + arr[2] + arr[3] + arr[4]\n    if k == 6:\n        return arr[0] + arr[1] + arr[2] + arr[3] + arr[4] + arr[5]\n    if k == 7:\n        return arr[0] + arr[1] + arr[2] + arr["
+    },
+    {
+      "task_id": "HumanEval/121",
+      "passed": false,
+      "completion": "    odd = []\n    even = []\n    for i in lst:\n        if i % 2 == 0:\n            odd.append(i)\n        else:\n            even.append(i)\n    return sum(odd) + sum(even)\n"
+    },
+    {
+      "task_id": "HumanEval/122",
+      "passed": false,
+      "completion": "    if len(arr) == 0:\n        return 0\n    if k < 0:\n        k = len(arr) + k\n    if k > len(arr):\n        return 0\n    if k == 0:\n        return arr[0]\n    if k == 1:\n        return arr[0] + arr[1]\n    if k == 2:\n        return arr[0] + arr[1] + arr[2]\n    if k == 3:\n        return arr[0] + arr[1] + arr[2] + arr[3]\n    if k == 4:\n        return arr[0] + arr[1] + arr[2] + arr[3] + arr[4]\n    if k == 5:\n        return arr[0] + arr[1] + arr[2] + arr[3] + arr[4] + arr[5]\n    if k == 6:\n        return arr[0] + arr[1] + arr[2] + arr[3] + arr[4] + arr[5] + arr[6]\n   "
+    },
+    {
+      "task_id": "HumanEval/123",
+      "passed": false,
+      "completion": "    if n < 0:\n        raise ValueError(\"Negative number expected.\")\n    if n == 0:\n        return [1]\n    if n == 1:\n        return [1]\n    if n % 2 == 0:\n        return [1, 3 * n + 1]\n    return [1, 3 * n + 1, 5 * n + 1]\n\n"
+    },
+    {
+      "task_id": "HumanEval/124",
+      "passed": false,
+      "completion": "    if len(date) == 0:\n        return False\n    if len(date) == 1:\n        return True\n    if len(date) == 2:\n        return True\n    if len(date) == 3:\n        return True\n    if len(date) == 4:\n        return True\n    if len(date) == 5:\n        return True\n    if len(date) == 6:\n        return True\n    if len(date) == 7:\n        return True\n    if len(date) == 8:\n        return True\n    if len(date) == 9:\n        return True\n    if len(date) == 10:\n        return True\n    if len(date) == 11:\n        return True\n    if len(date) == 12:\n        return True\n    return False\n"
+    },
+    {
+      "task_id": "HumanEval/125",
+      "passed": false,
+      "completion": "    return [word.lower() for word in txt.split(',')]\n"
+    },
+    {
+      "task_id": "HumanEval/126",
+      "passed": false,
+      "completion": "    if len(lst) == 1:\n        return True\n    if len(lst) == 2:\n        return lst[0] < lst[1]\n    if len(lst) == 3:\n        return lst[0] < lst[1] and lst[1] < lst[2]\n    if len(lst) == 4:\n        return lst[0] < lst[1] and lst[1] < lst[2] and lst[2] < lst[3]\n    if len(lst) == 5:\n        return lst[0] < lst[1] and lst[1] < lst[2] and lst[2] < lst[3] and lst[3] < lst[4]\n    if len(lst) == 6:\n        return lst[0] < lst[1] and lst[1] < lst[2] and lst[2] < lst[3] and lst[3] < lst[4] and lst[4] < lst[5]\n    if len(lst) == 7:\n        return lst[0] < lst[1] and lst[1] < lst[2] and"
+    },
+    {
+      "task_id": "HumanEval/127",
+      "passed": false,
+      "completion": "    if interval1[0] < interval2[0]:\n        return \"NO\"\n    if interval1[1] < interval2[1]:\n        return \"NO\"\n    if interval1[0] > interval2[1]:\n        return \"NO\"\n    if interval1[1] > interval2[0]:\n        return \"NO\"\n    if interval1[0] == interval2[0] and interval1[1] == interval2[1]:\n        return \"YES\"\n    if interval1[0] == interval2[1] and interval1[1] == interval2[0]:\n        return \"YES\"\n    if interval1[0] > interval2[1] or interval1[1] > interval2[0]:\n        return \"NO\"\n    if interval1[0] > interval2[0] or interval1[1] > interval2[1]:\n        return \"NO\"\n    if interval1[0] == interval2[1] and interval1[1] == interval2[0]:\n        return \"YES\"\n    if interval1[0] == interval2[0] and interval1"
+    },
+    {
+      "task_id": "HumanEval/128",
+      "passed": false,
+      "completion": "    if len(arr) == 0:\n        return None\n    if len(arr) == 1:\n        return arr[0]\n    return sum([a*b for a, b in zip(arr, arr[1:])])\n\n"
+    },
+    {
+      "task_id": "HumanEval/129",
+      "passed": false,
+      "completion": "    # Write your code here\n    if not grid:\n        return []\n    if len(grid) == 1:\n        return grid[0]\n    if k == 1:\n        return grid[0]\n    if len(grid) == 2:\n        return grid[0] + grid[1]\n    if len(grid) == 3:\n        return grid[0] + grid[1] + grid[2]\n    if len(grid) == 4:\n        return grid[0] + grid[1] + grid[2] + grid[3]\n    if len(grid) == 5:\n        return grid[0] + grid[1] + grid[2] + grid[3] + grid[4]\n    if len(grid) == 6:\n        return grid[0] + grid[1] + grid[2] + grid[3] + grid[4] + grid[5]\n    if len(grid) == 7:\n        return grid[0] + grid[1] + grid[2] + grid[3] + grid[4] + grid[5] + grid[6]\n"
+    },
+    {
+      "task_id": "HumanEval/130",
+      "passed": false,
+      "completion": "    if n < 0:\n        return []\n    if n == 0:\n        return [1]\n    if n == 1:\n        return [1]\n    if n == 2:\n        return [1, 2]\n    if n == 3:\n        return [1, 3, 5]\n    if n == 4:\n        return [1, 4, 7, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97]\n    if n == 5:\n        return [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85"
+    },
+    {
+      "task_id": "HumanEval/131",
+      "passed": false,
+      "completion": "    if n < 0:\n        return 0\n    return int(str(n)[::-1])\n"
+    },
+    {
+      "task_id": "HumanEval/132",
+      "passed": false,
+      "completion": "    def is_nested(string):\n        if string[0] == '[':\n            return is_nested(string[1:])\n        if string[0] == ']' and string[1] == '[':\n            return is_nested(string[2:])\n        return False\n    return is_nested"
+    },
+    {
+      "task_id": "HumanEval/133",
+      "passed": false,
+      "completion": "    return sum([x*x for x in lst])\n\n"
+    },
+    {
+      "task_id": "HumanEval/134",
+      "passed": false,
+      "completion": "    if not txt:\n        return False\n    if txt[-1] in 'abcdefghijklmnopqrstuvwxyz':\n        return False\n    return True\n"
+    },
+    {
+      "task_id": "HumanEval/135",
+      "passed": false,
+      "completion": "    def can_arrange(arr):\n        return arr[0] > arr[1]\n    return can_arrange\n"
+    },
+    {
+      "task_id": "HumanEval/136",
+      "passed": false,
+      "completion": "    if not lst:\n        return None, None\n    if len(lst) == 1:\n        return lst[0], lst[0]\n    if len(lst) == 2:\n        return lst[0], lst[1]\n    if len(lst) == 3:\n        return lst[0], lst[1], lst[2]\n    if len(lst) == 4:\n        return lst[0], lst[1], lst[2], lst[3]\n    if len(lst) == 5:\n        return lst[0], lst[1], lst[2], lst[3], lst[4]\n    if len(lst) == 6:\n        return lst[0], lst[1], lst[2], lst[3], lst[4], lst[5]\n    if len(lst) == 7:\n        return lst[0], lst[1], lst[2], lst[3], lst[4], lst[5], lst[6]\n    if len(lst) == 8:\n        return lst[0], lst[1], lst[2], lst[3], lst[4], lst[5], lst"
+    },
+    {
+      "task_id": "HumanEval/137",
+      "passed": false,
+      "completion": "    if isinstance(a, str):\n        a = a.replace(',', '.')\n    if isinstance(b, str):\n        b = b.replace(',', '.')\n    if isinstance(a, float):\n        return a\n    if isinstance(a, int):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n        return a\n    if isinstance(a, complex):\n"
+    },
+    {
+      "task_id": "HumanEval/138",
+      "passed": false,
+      "completion": "    return n % 2 == 0\n\n"
+    },
+    {
+      "task_id": "HumanEval/139",
+      "passed": false,
+      "completion": "    if n == 0:\n        return 1\n    return special_factorial(n-1) * special_factorial(n-2) * special_factorial(n-3) * special_factorial(n-4)\n\n"
+    },
+    {
+      "task_id": "HumanEval/140",
+      "passed": false,
+      "completion": "    if len(text) > 2:\n        return text.replace(\" \", \"_\")\n    else:\n        return text\n"
+    },
+    {
+      "task_id": "HumanEval/141",
+      "passed": false,
+      "completion": "    if not file_name:\n        return 'No'\n    if not file_name[0].isdigit():\n        return 'No'\n    if not file_name[1:].isdigit():\n        return 'No'\n    if not file_name[2:].isdigit():\n        return 'No'\n    if not file_name[3:].isdigit():\n        return 'No'\n    if not file_name[4:].isdigit():\n        return 'No'\n    if not file_name[5:].isdigit():\n        return 'No'\n    if not file_name[6:].isdigit():\n        return 'No'\n    if not file_name[7:].isdigit():\n        return 'No'\n    if not file_name[8:].isdigit():\n        return 'No'\n    if not file_name[9:].isdigit():\n        return 'No'\n    if not file_name[10:].isdigit():\n        return 'No'\n    if not file_name[11:].isdigit():\n        return 'No'\n    if not file_name[12:].isdigit():\n        return 'No'\n    if not file_name[13:].isdigit():\n        return 'No'\n   "
+    },
+    {
+      "task_id": "HumanEval/142",
+      "passed": false,
+      "completion": "    if len(lst) % 3 != 0:\n        return 0\n    if len(lst) % 4 != 0:\n        return 0\n    return sum([int(i) for i in lst])\n\n"
+    },
+    {
+      "task_id": "HumanEval/143",
+      "passed": false,
+      "completion": "    # Write your code here\n    return \" \".join([word for word in sentence.split() if len(word) > 1])\n\n"
+    },
+    {
+      "task_id": "HumanEval/144",
+      "passed": false,
+      "completion": "    if not isinstance(x, str):\n        return False\n    if not isinstance(n, str):\n        return False\n    if len(x) != len(n):\n        return False\n    if len(x) == 0:\n        return False\n    if len(n) == 0:\n        return False\n    if x[0] == '0':\n        return False\n    if n[0] == '0':\n        return False\n    if x[0] == '0' and n[0] == '0':\n        return False\n    if x[0] == '0' and n[0] != '0':\n        return False\n    if x[0] == '0' and n[0] == '0':\n        return False\n    if x[0] == '0' and n[0] != '0':\n        return False\n    if x[0] == '0' and n[0] == '0':\n        return False\n    if x[0] == '0' and n[0] != '0':\n        return False\n    if x[0] == '0' and n[0"
+    },
+    {
+      "task_id": "HumanEval/145",
+      "passed": false,
+      "completion": "    return sorted(nums, key=lambda x: x.sum)\n\n"
+    },
+    {
+      "task_id": "HumanEval/146",
+      "passed": false,
+      "completion": "    # Special case:\n    if len(nums) == 0:\n        return 0\n    # Special case:\n    if len(nums) == 1:\n        return 1\n    # Special case:\n    if len(nums) == 2:\n        return 2\n    # Special case:\n    if len(nums) == 3:\n        return 3\n    # Special case:\n    if len(nums) == 4:\n        return 4\n    # Special case:\n    if len(nums) == 5:\n        return 5\n    # Special case:\n    if len(nums) == 6:\n        return 6\n    # Special case:\n    if len(nums) == 7:\n        return 7\n    # Special case:\n    if len(nums) == 8:\n        return 8\n    # Special case:\n    if len(nums) == 9:\n        return 9\n    # Special case:\n    if len(nums) == 10:\n        return 10\n    # Special case:\n    if len(nums) == 11:\n        return 11\n"
+    },
+    {
+      "task_id": "HumanEval/147",
+      "passed": false,
+      "completion": "    # Write your code here\n    a = [1, 3, 7, 13, 21]\n    n = int(n)\n    if n < 0:\n        return 0\n    if n == 0:\n        return 1\n    if n == 1:\n        return 2\n    if n == 2:\n        return 3\n    if n == 3:\n        return 4\n    if n == 4:\n        return 5\n    if n == 5:\n        return 6\n    if n == 6:\n        return 7\n    if n == 7:\n        return 8\n    if n == 8:\n        return 9\n    if n == 9:\n        return 10\n    if n == 10:\n        return 11\n    if n == 11:\n        return 12\n    if n == 12:\n        return 13\n    if n == 13:\n        return 14\n    if n == 14:\n        return 15\n    if"
+    },
+    {
+      "task_id": "HumanEval/148",
+      "passed": false,
+      "completion": "    # Make a list of all planets in the solar system\n    planets = []\n    for planet in planets:\n        if planet == planet1 or planet == planet2:\n            continue\n        if planet not in planets:\n            planets.append(planet)\n    # Sort the planets by proximity to the sun\n    planets.sort(key=lambda planet: planet.distance_to_sun)\n    # Return the planets that are in the solar system\n    return planets"
+    },
+    {
+      "task_id": "HumanEval/149",
+      "passed": false,
+      "completion": "    # Your code here\n    lst = sorted(lst)\n    return lst\n"
+    },
+    {
+      "task_id": "HumanEval/150",
+      "passed": false,
+      "completion": "    if n == 1:\n        return x\n    if n == 2:\n        return y\n    if n % 2 == 0:\n        return x_or_y(n // 2, x, y)\n    else:\n        return x_or_y(n // 2, x_or_y(n // 2 - 1, x, y), y)\n"
+    },
+    {
+      "task_id": "HumanEval/151",
+      "passed": false,
+      "completion": "    if not lst:\n        return 0\n    return sum([x**2 for x in lst])\n"
+    },
+    {
+      "task_id": "HumanEval/152",
+      "passed": false,
+      "completion": "    guess = guess\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess = guess[::-1]\n    guess ="
+    },
+    {
+      "task_id": "HumanEval/153",
+      "passed": false,
+      "completion": "    if len(extensions) == 0:\n        return ''\n    if len(class_name) == 0:\n        return ''\n    if len(class_name) == 1:\n        return class_name\n    if len(class_name) == 2:\n        return class_name[0] + '.' + class_name[1]\n    if len(class_name) == 3:\n        return class_name[0] + '.' + class_name[1] + '.' + class_name[2]\n    return ''\n"
+    },
+    {
+      "task_id": "HumanEval/154",
+      "passed": false,
+      "completion": "    if len(a) > len(b):\n        return False\n    if len(a) == len(b):\n        for i in range(len(a)):\n            if a[i] == b[i]:\n                return True\n    return False\n"
+    },
+    {
+      "task_id": "HumanEval/155",
+      "passed": false,
+      "completion": "    if num % 2 == 0:\n        return (num, 1)\n    else:\n        return (num, 2)\n\n"
+    },
+    {
+      "task_id": "HumanEval/156",
+      "passed": false,
+      "completion": "    if number < 0:\n        return '-' + str(abs(number))\n    else:\n        return str(abs(number))\n\n"
+    },
+    {
+      "task_id": "HumanEval/157",
+      "passed": false,
+      "completion": "    if a == b == c:\n        return True\n    if a == b or b == c:\n        return True\n    if a == c or b == c:\n        return True\n    if a == b or b == c:\n        return False\n    if a == c or b == c:\n        return False\n    if a == b or b == c:\n        return False\n    if a == c or b == c:\n        return False\n    if a == b or b == c:\n        return False\n    if a == c or b == c:\n        return False\n    if a == b or b == c:\n        return False\n    if a == c or b == c:\n        return False\n    if a == b or b == c:\n        return False\n    if a == c or b == c:\n        return False\n    if a == b or b == c:\n        return False\n    if a == c or b == c:\n        return False\n    if a == b or b == c:\n        return False\n    if a == c or b == c:\n        return False\n    if a"
+    },
+    {
+      "task_id": "HumanEval/158",
+      "passed": false,
+      "completion": "    max_count = 0\n    for word in words:\n        if len(word) > max_count:\n            max_count = len(word)\n    return words[max_count]\n"
+    },
+    {
+      "task_id": "HumanEval/159",
+      "passed": false,
+      "completion": "    if need <= 0:\n        return []\n    if remaining <= 0:\n        return []\n    if need == 1:\n        return [number, need]\n    if need > 1:\n        return [number, need - 1]\n    if need < 0:\n        return [number, need + 1]\n    return [number, need]\n"
+    },
+    {
+      "task_id": "HumanEval/160",
+      "passed": false,
+      "completion": "    if len(operator) == 0:\n        return operand\n    if len(operand) == 0:\n        return 0\n    if len(operator) == 1:\n        return operator[0]\n    if len(operator) == 2:\n        return operator[0] + operator[1]\n    if len(operator) == 3:\n        return operator[0] + operator[1] + operator[2]\n    if len(operator) == 4:\n        return operator[0] + operator[1] + operator[2] + operator[3]\n    if len(operator) == 5:\n        return operator[0] + operator[1] + operator[2] + operator[3] + operator[4]\n    if len(operator) == 6:\n        return operator[0] + operator[1] + operator[2] + operator[3] + operator[4] + operator[5]\n    if len(operator) == 7:\n        return operator[0] + operator[1] + operator[2] + operator[3] + operator[4] + operator[5] + operator[6]\n    if"
+    },
+    {
+      "task_id": "HumanEval/161",
+      "passed": false,
+      "completion": "    if s == \"\":\n        return \"\"\n    if s[0] == \"#\":\n        return s[1:]\n    if s[0] == \"@\":\n        return s[1:]\n    if s[0] == \"@@\":\n        return s[1:]\n    if s[0] == \"@#\":\n        return s[1:]\n    if s[0] == \"@#@\":\n        return s[1:]\n    if s[0] == \"@#\":\n        return s[1:]\n    if s[0] == \"@#@\":\n        return s[1:]\n    if s[0] == \"@#\":\n        return s[1:]\n    if s[0] == \"@#@\":\n        return s[1:]\n    if s[0] == \"@#\":\n        return s[1:]\n    if s[0] == \"@#@\":\n        return s[1:]\n    if s[0] == \"@#\":\n        return s[1:]\n    if s[0] == \"@#@\":\n        return s[1:]\n    if s[0] == \"@"
+    },
+    {
+      "task_id": "HumanEval/162",
+      "passed": false,
+      "completion": "    if not text:\n        return None\n    return md5(text.encode('utf-8')).hexdigest()\n\n"
+    },
+    {
+      "task_id": "HumanEval/163",
+      "passed": false,
+      "completion": "    if a < b:\n        return [a, b]\n    else:\n        return [b, a]\n\n"
+    }
+  ]
+}

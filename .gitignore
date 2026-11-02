@@ -31,4 +31,5 @@ logs/
 src/outputs/
 outputs/
 temp_model_for_eval_*/
+.DS_Store
 trained_model/

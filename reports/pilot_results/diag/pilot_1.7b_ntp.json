@@ -1,0 +1,331 @@
+{
+  "checkpoint": "/projects/u6wc/savants/runs/pilot_1.7b_ntp/step_0030517.pt",
+  "model_size": "1.7b",
+  "objective": "next_token",
+  "step": 30517,
+  "tokens": 999981056,
+  "heldout": {
+    "python": {
+      "tokens": 524160,
+      "ce": 1.4610013999044895,
+      "ppl": 4.310273675538401,
+      "kl_to_teacher": 0.6308050788938999,
+      "student_top1_acc": 0.7129407051282052,
+      "teacher_ce_on_covered": 0.6920425006092399,
+      "teacher_top64_cover": 0.9824977106227106
+    },
+    "apollo": {
+      "tokens": 524160,
+      "ce": 5.375901713967323,
+      "ppl": 216.1346761250394,
+      "kl_to_teacher": 3.4984133318066597,
+      "student_top1_acc": 0.306219474969475,
+      "teacher_ce_on_covered": 1.4271474136489373,
+      "teacher_top64_cover": 0.9597088675213675
+    }
+  },
+  "exams": {
+    "mmlu_0shot": {
+      "n": 945,
+      "answered": 945,
+      "accuracy": 0.2116,
+      "calibrated_accuracy": 0.2095,
+      "pick_hist_ABCD": [
+        942,
+        0,
+        1,
+        2
+      ],
+      "calibrated_pick_hist_ABCD": [
+        253,
+        255,
+        249,
+        188
+      ],
+      "gold_hist_ABCD": [
+        198,
+        222,
+        211,
+        314
+      ],
+      "mean_letter_mass": 0.0429,
+      "mean_letter_logprob_ABCD": [
+        -3.554,
+        -5.407,
+        -5.888,
+        -5.646
+      ]
+    },
+    "mmlu_0shot_eos": {
+      "n": 945,
+      "answered": 945,
+      "accuracy": 0.2116,
+      "calibrated_accuracy": 0.2085,
+      "pick_hist_ABCD": [
+        942,
+        0,
+        1,
+        2
+      ],
+      "calibrated_pick_hist_ABCD": [
+        252,
+        266,
+        236,
+        191
+      ],
+      "gold_hist_ABCD": [
+        198,
+        222,
+        211,
+        314
+      ],
+      "mean_letter_mass": 0.0487,
+      "mean_letter_logprob_ABCD": [
+        -3.4,
+        -5.159,
+        -5.954,
+        -5.709
+      ]
+    },
+    "mmlu_5shot": {
+      "n": 945,
+      "answered": 945,
+      "accuracy": 0.3143,
+      "calibrated_accuracy": 0.3026,
+      "pick_hist_ABCD": [
+        90,
+        33,
+        125,
+        697
+      ],
+      "calibrated_pick_hist_ABCD": [
+        161,
+        230,
+        64,
+        490
+      ],
+      "gold_hist_ABCD": [
+        198,
+        222,
+        211,
+        314
+      ],
+      "mean_letter_mass": 0.9533,
+      "mean_letter_logprob_ABCD": [
+        -3.012,
+        -3.165,
+        -2.087,
+        -0.732
+      ]
+    },
+    "mmlu_5shot_eos": {
+      "n": 945,
+      "answered": 945,
+      "accuracy": 0.3122,
+      "calibrated_accuracy": 0.3026,
+      "pick_hist_ABCD": [
+        87,
+        39,
+        117,
+        702
+      ],
+      "calibrated_pick_hist_ABCD": [
+        152,
+        236,
+        70,
+        487
+      ],
+      "gold_hist_ABCD": [
+        198,
+        222,
+        211,
+        314
+      ],
+      "mean_letter_mass": 0.9566,
+      "mean_letter_logprob_ABCD": [
+        -3.044,
+        -3.119,
+        -2.09,
+        -0.73
+      ]
+    },
+    "medqa_0shot": {
+      "n": 1273,
+      "answered": 1273,
+      "accuracy": 0.2781,
+      "calibrated_accuracy": 0.2577,
+      "pick_hist_ABCD": [
+        1270,
+        3,
+        0,
+        0
+      ],
+      "calibrated_pick_hist_ABCD": [
+        358,
+        311,
+        339,
+        265
+      ],
+      "gold_hist_ABCD": [
+        353,
+        309,
+        346,
+        265
+      ],
+      "mean_letter_mass": 0.032,
+      "mean_letter_logprob_ABCD": [
+        -3.909,
+        -5.448,
+        -6.047,
+        -5.713
+      ]
+    },
+    "medqa_0shot_eos": {
+      "n": 1273,
+      "answered": 1273,
+      "accuracy": 0.2781,
+      "calibrated_accuracy": 0.2522,
+      "pick_hist_ABCD": [
+        1268,
+        4,
+        1,
+        0
+      ],
+      "calibrated_pick_hist_ABCD": [
+        379,
+        304,
+        325,
+        265
+      ],
+      "gold_hist_ABCD": [
+        353,
+        309,
+        346,
+        265
+      ],
+      "mean_letter_mass": 0.0385,
+      "mean_letter_logprob_ABCD": [
+        -3.671,
+        -5.233,
+        -6.093,
+        -5.81
+      ]
+    },
+    "medqa_5shot": {
+      "n": 1273,
+      "answered": 1273,
+      "accuracy": 0.2639,
+      "calibrated_accuracy": 0.2357,
+      "pick_hist_ABCD": [
+        1076,
+        0,
+        0,
+        197
+      ],
+      "calibrated_pick_hist_ABCD": [
+        404,
+        293,
+        199,
+        377
+      ],
+      "gold_hist_ABCD": [
+        353,
+        309,
+        346,
+        265
+      ],
+      "mean_letter_mass": 0.9385,
+      "mean_letter_logprob_ABCD": [
+        -0.64,
+        -2.859,
+        -3.829,
+        -1.254
+      ]
+    },
+    "medqa_5shot_eos": {
+      "n": 1273,
+      "answered": 1273,
+      "accuracy": 0.2632,
+      "calibrated_accuracy": 0.2451,
+      "pick_hist_ABCD": [
+        1172,
+        0,
+        0,
+        101
+      ],
+      "calibrated_pick_hist_ABCD": [
+        424,
+        288,
+        206,
+        355
+      ],
+      "gold_hist_ABCD": [
+        353,
+        309,
+        346,
+        265
+      ],
+      "mean_letter_mass": 0.9483,
+      "mean_letter_logprob_ABCD": [
+        -0.539,
+        -2.821,
+        -4.017,
+        -1.41
+      ]
+    }
+  },
+  "cloze": {
+    "mmlu": {
+      "n": 945,
+      "accuracy_sum_logprob": 0.2116,
+      "accuracy_mean_logprob": 0.2519,
+      "pick_hist_sum": [
+        262,
+        222,
+        217,
+        244
+      ],
+      "pick_hist_mean": [
+        212,
+        234,
+        249,
+        250
+      ]
+    },
+    "medqa": {
+      "n": 1273,
+      "accuracy_sum_logprob": 0.2404,
+      "accuracy_mean_logprob": 0.2451,
+      "pick_hist_sum": [
+        338,
+        290,
+        324,
+        321
+      ],
+      "pick_hist_mean": [
+        317,
+        330,
+        336,
+        290
+      ]
+    }
+  },
+  "samples": [
+    {
+      "prompt": "The patient presented with chest pain and",
+      "continuation": " the 2019-2020 is a\r\n    significant difference in the number of people who have been\r\n    in the 2019-2020. The number of people who have been in the 2019-2020\r\n"
+    },
+    {
+      "prompt": "Question: What is the function of the mitral valve?\nAnswer:",
+      "continuation": " The function of the mitral_ve?\n\"\"\"\n\nimport numpy as np\nimport pandas as pd\nimport matplotlib.pyplot as plt\nimport seaborn as sns\nimport scipy.stats as stats\nimport scipy.stats as stats\nimport scipy.stats as stats\nimport scipy.stats as stats\nimport scipy.stats as"
+    },
+    {
+      "prompt": "def fibonacci(n):\n",
+      "continuation": "    \"\"\"\n    Returns the nth Fibonacci number.\n    \"\"\"\n    return 1 if n == 0 else 2 * n + 1\n\n\ndef hex2dec(hex):\n    \"\"\"\n    Converts a hexadecimal number to a decimal number.\n    \"\"\"\n    return int(hex"
+    },
+    {
+      "prompt": "The following are multiple choice questions (with answers) about anatomy.\n\nWhich bone is the longest in the human body?\nA. Tibia\nB. Femur\nC. Humerus\nD. Fibula\nAnswer:",
+      "continuation": " 1\nAnswer: 2\nAnswer: 3\nAnswer: 4\nAnswer: 5\nAnswer: 6\nAnswer: 7\nAnswer: 8\nAnswer: 9\nAnswer: 10\nAnswer: 11\nAnswer: 12"
+    }
+  ]
+}

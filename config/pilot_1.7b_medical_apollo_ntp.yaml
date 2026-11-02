@@ -1,0 +1,20 @@
+# 1.7B Apollo next-token baseline. Same 1.00B-token budget and schedule as the
+# 0.6B Apollo run. Batch 8 fits on one GPU for this model size.
+seed: 42
+model_size: 1.7b
+data_dir: /projects/u6wc/savants/data/packed/medical_apollo
+logit_dir: null
+output_dir: /projects/u6wc/savants/runs/pilot_1.7b_medical_apollo_ntp
+training:
+  steps: 30517
+  warmup_steps: 300
+  decay_start_step: 27465
+  learning_rate: 6.0e-4
+  lr_floor: 0.1
+  batch_sequences: 8
+  grad_accumulation_steps: 1
+  kd_ratio: 0.0
+  temperature: 1.0
+  logit_chunk: 1024
+  log_every: 20
+  save_every: 1000

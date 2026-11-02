@@ -1,7 +1,8 @@
 # First real pilot: 0.6B student, next-token loss, about 1B tokens.
-# Distillation is a second run with kd_ratio: 1.0 and logit_dir set to the
-# precomputed top-64 shards. Do not launch this until the smoke run finishes.
+# Distillation is a second run with kd_ratio: 1.0 (pure forward KL) and
+# logit_dir set to the precomputed top-64 shards.
 seed: 42
+model_size: 0.6b
 data_dir: /projects/u6wc/savants/data/packed/python
 logit_dir: null
 output_dir: /projects/u6wc/savants/runs/pilot_0.6b_ntp

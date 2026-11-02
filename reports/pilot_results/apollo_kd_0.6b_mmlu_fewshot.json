@@ -1,0 +1,349 @@
+{
+  "checkpoint": "/projects/u6wc/savants/runs/pilot_0.6b_medical_apollo_kd/step_0030517.pt",
+  "mmlu": {
+    "0-shot": {
+      "overall": {
+        "n": 945,
+        "answered": 945,
+        "correct": 208,
+        "accuracy": 0.2201,
+        "skipped_length": 0
+      },
+      "subjects": {
+        "anatomy": {
+          "n": 135,
+          "answered": 135,
+          "correct": 32,
+          "accuracy": 0.237
+        },
+        "clinical knowledge": {
+          "n": 265,
+          "answered": 265,
+          "correct": 61,
+          "accuracy": 0.2302
+        },
+        "college medicine": {
+          "n": 173,
+          "answered": 173,
+          "correct": 38,
+          "accuracy": 0.2197
+        },
+        "medical genetics": {
+          "n": 100,
+          "answered": 100,
+          "correct": 29,
+          "accuracy": 0.29
+        },
+        "professional medicine": {
+          "n": 272,
+          "answered": 272,
+          "correct": 48,
+          "accuracy": 0.1765
+        }
+      }
+    },
+    "5-shot": {
+      "overall": {
+        "n": 945,
+        "answered": 945,
+        "correct": 273,
+        "accuracy": 0.2889,
+        "skipped_length": 0
+      },
+      "subjects": {
+        "anatomy": {
+          "n": 135,
+          "answered": 135,
+          "correct": 41,
+          "accuracy": 0.3037
+        },
+        "clinical knowledge": {
+          "n": 265,
+          "answered": 265,
+          "correct": 64,
+          "accuracy": 0.2415
+        },
+        "college medicine": {
+          "n": 173,
+          "answered": 173,
+          "correct": 36,
+          "accuracy": 0.2081
+        },
+        "medical genetics": {
+          "n": 100,
+          "answered": 100,
+          "correct": 30,
+          "accuracy": 0.3
+        },
+        "professional medicine": {
+          "n": 272,
+          "answered": 272,
+          "correct": 102,
+          "accuracy": 0.375
+        }
+      }
+    },
+    "cloze": {
+      "overall": {
+        "n": 945,
+        "accuracy_sum": 0.2804,
+        "accuracy_mean": 0.2984,
+        "pick_hist_sum": [
+          289,
+          235,
+          188,
+          233
+        ],
+        "pick_hist_mean": [
+          235,
+          262,
+          197,
+          251
+        ]
+      },
+      "subjects": {
+        "anatomy": {
+          "n": 135,
+          "accuracy_sum": 0.3704,
+          "accuracy_mean": 0.2963,
+          "pick_hist_sum": [
+            49,
+            27,
+            31,
+            28
+          ],
+          "pick_hist_mean": [
+            32,
+            33,
+            31,
+            39
+          ]
+        },
+        "clinical knowledge": {
+          "n": 265,
+          "accuracy_sum": 0.2302,
+          "accuracy_mean": 0.3245,
+          "pick_hist_sum": [
+            80,
+            75,
+            49,
+            61
+          ],
+          "pick_hist_mean": [
+            66,
+            75,
+            57,
+            67
+          ]
+        },
+        "college medicine": {
+          "n": 173,
+          "accuracy_sum": 0.2775,
+          "accuracy_mean": 0.2486,
+          "pick_hist_sum": [
+            58,
+            43,
+            29,
+            43
+          ],
+          "pick_hist_mean": [
+            48,
+            49,
+            28,
+            48
+          ]
+        },
+        "medical genetics": {
+          "n": 100,
+          "accuracy_sum": 0.27,
+          "accuracy_mean": 0.28,
+          "pick_hist_sum": [
+            40,
+            22,
+            13,
+            25
+          ],
+          "pick_hist_mean": [
+            26,
+            29,
+            20,
+            25
+          ]
+        },
+        "professional medicine": {
+          "n": 272,
+          "accuracy_sum": 0.2904,
+          "accuracy_mean": 0.3125,
+          "pick_hist_sum": [
+            62,
+            68,
+            66,
+            76
+          ],
+          "pick_hist_mean": [
+            63,
+            76,
+            61,
+            72
+          ]
+        }
+      }
+    },
+    "cloze_3-shot": {
+      "overall": {
+        "n": 945,
+        "accuracy_sum": 0.2646,
+        "accuracy_mean": 0.3005,
+        "pick_hist_sum": [
+          286,
+          243,
+          190,
+          226
+        ],
+        "pick_hist_mean": [
+          240,
+          263,
+          195,
+          247
+        ]
+      },
+      "subjects": {
+        "anatomy": {
+          "n": 135,
+          "accuracy_sum": 0.363,
+          "accuracy_mean": 0.3111,
+          "pick_hist_sum": [
+            42,
+            32,
+            32,
+            29
+          ],
+          "pick_hist_mean": [
+            35,
+            35,
+            29,
+            36
+          ]
+        },
+        "clinical knowledge": {
+          "n": 265,
+          "accuracy_sum": 0.2226,
+          "accuracy_mean": 0.3358,
+          "pick_hist_sum": [
+            86,
+            81,
+            39,
+            59
+          ],
+          "pick_hist_mean": [
+            68,
+            79,
+            51,
+            67
+          ]
+        },
+        "college medicine": {
+          "n": 173,
+          "accuracy_sum": 0.2948,
+          "accuracy_mean": 0.2775,
+          "pick_hist_sum": [
+            60,
+            40,
+            32,
+            41
+          ],
+          "pick_hist_mean": [
+            49,
+            46,
+            28,
+            50
+          ]
+        },
+        "medical genetics": {
+          "n": 100,
+          "accuracy_sum": 0.22,
+          "accuracy_mean": 0.27,
+          "pick_hist_sum": [
+            37,
+            27,
+            15,
+            21
+          ],
+          "pick_hist_mean": [
+            27,
+            30,
+            21,
+            22
+          ]
+        },
+        "professional medicine": {
+          "n": 272,
+          "accuracy_sum": 0.2537,
+          "accuracy_mean": 0.2868,
+          "pick_hist_sum": [
+            61,
+            63,
+            72,
+            76
+          ],
+          "pick_hist_mean": [
+            61,
+            73,
+            66,
+            72
+          ]
+        }
+      }
+    }
+  },
+  "medqa": {
+    "0-shot": {
+      "n": 1273,
+      "answered": 1273,
+      "correct": 354,
+      "accuracy": 0.2781,
+      "skipped_length": 0
+    },
+    "5-shot": {
+      "n": 1273,
+      "answered": 1273,
+      "correct": 354,
+      "accuracy": 0.2781,
+      "skipped_length": 0
+    },
+    "cloze": {
+      "n": 1273,
+      "accuracy_sum": 0.2529,
+      "accuracy_mean": 0.2891,
+      "pick_hist_sum": [
+        364,
+        273,
+        330,
+        306
+      ],
+      "pick_hist_mean": [
+        361,
+        312,
+        314,
+        286
+      ]
+    },
+    "cloze_3-shot": {
+      "n": 1273,
+      "accuracy_sum": 0.2592,
+      "accuracy_mean": 0.2899,
+      "pick_hist_sum": [
+        362,
+        290,
+        325,
+        296
+      ],
+      "pick_hist_mean": [
+        352,
+        308,
+        315,
+        298
+      ]
+    }
+  }
+}

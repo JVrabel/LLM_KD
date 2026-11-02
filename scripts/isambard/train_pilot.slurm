@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Single-GPU 0.6B student. CONFIG is the yaml, copied under savants/config.
+# Single-GPU student (0.6B or 1.7B at batch 8). CONFIG is the yaml, copied under savants/config.
 #SBATCH --job-name=pilot_0.6b
 #SBATCH --account=brics.u6wc
 #SBATCH --gpus=1
@@ -28,4 +28,8 @@ fi
 NVIDIA_LIBS=$(find venv-train/lib/python3.12/site-packages/nvidia -type d -name lib | paste -sd:)
 export LD_LIBRARY_PATH="${NVIDIA_LIBS}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 python -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available())"
-python "$SAVANTS/src/train_kd.py" --config "$CONFIG"
+ARGS=()
+# RESUME_LATEST=1 continues from the newest checkpoint in output_dir (or starts
+# fresh): submit a run longer than 24 h as two jobs chained with afterany.
+if [[ -n "${RESUME_LATEST:-}" ]]; then ARGS+=(--resume-latest); fi
+python "$SAVANTS/src/train_kd.py" --config "$CONFIG" "${ARGS[@]}"

@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# HumanEval pass@1 for the finished 0.6B next-token checkpoint. One GPU.
+#SBATCH --job-name=student_humaneval
+#SBATCH --account=brics.u6wc
+#SBATCH --gpus=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=02:00:00
+#SBATCH --output=/projects/u6wc/savants/logs/student_humaneval_%j.log
+
+set -euo pipefail
+export PATH="$HOME/.local/bin:$PATH"
+module load cuda/12.6
+SAVANTS="$PROJECTDIR/savants"
+export UV_CACHE_DIR="$SAVANTS/uv-cache"
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false
+
+cd "$SAVANTS"
+JOB_CACHE="$SAVANTS/job-cache/${SLURM_JOB_ID:-manual}"
+mkdir -p "$JOB_CACHE/tmp" "$JOB_CACHE/torchinductor" "$JOB_CACHE/triton"
+export TMPDIR="$JOB_CACHE/tmp"
+export TORCHINDUCTOR_CACHE_DIR="$JOB_CACHE/torchinductor"
+export TRITON_CACHE_DIR="$JOB_CACHE/triton"
+# shellcheck disable=SC1091
+source venv-train/bin/activate
+NVIDIA_LIBS=$(find venv-train/lib/python3.12/site-packages/nvidia -type d -name lib | paste -sd:)
+export LD_LIBRARY_PATH="${NVIDIA_LIBS}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+python -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available())"
+CHECKPOINT="${CHECKPOINT:-$SAVANTS/runs/pilot_0.6b_ntp/step_0030517.pt}"
+OUT="${OUT:-$SAVANTS/logs/student_humaneval_results.json}"
+python "$SAVANTS/scripts/student_humaneval.py" \
+    --checkpoint "$CHECKPOINT" \
+    --tokenizer "$SAVANTS/models/Qwen3.5-35B-A3B-Base" \
+    --humaneval "$SAVANTS/data/raw/eval/humaneval/HumanEval.jsonl" \
+    --out "$OUT"

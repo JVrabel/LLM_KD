@@ -1,0 +1,331 @@
+{
+  "checkpoint": "/projects/u6wc/savants/runs/pilot_0.6b_medical_apollo_kd/step_0030517.pt",
+  "model_size": "0.6b",
+  "objective": "forward_kl",
+  "step": 30517,
+  "tokens": 999981056,
+  "heldout": {
+    "python": {
+      "tokens": 524160,
+      "ce": 5.6091649532318115,
+      "ppl": 272.916244997222,
+      "kl_to_teacher": 4.705384328961372,
+      "student_top1_acc": 0.3246012667887668,
+      "teacher_ce_on_covered": 0.6920425006092399,
+      "teacher_top64_cover": 0.9824977106227106
+    },
+    "apollo": {
+      "tokens": 524160,
+      "ce": 2.348373204469681,
+      "ppl": 10.468525714085565,
+      "kl_to_teacher": 0.5994284497573972,
+      "student_top1_acc": 0.5119715354090354,
+      "teacher_ce_on_covered": 1.4271474136489373,
+      "teacher_top64_cover": 0.9597088675213675
+    }
+  },
+  "exams": {
+    "mmlu_0shot": {
+      "n": 945,
+      "answered": 945,
+      "accuracy": 0.2222,
+      "calibrated_accuracy": 0.2762,
+      "pick_hist_ABCD": [
+        775,
+        91,
+        77,
+        2
+      ],
+      "calibrated_pick_hist_ABCD": [
+        183,
+        291,
+        225,
+        246
+      ],
+      "gold_hist_ABCD": [
+        198,
+        222,
+        211,
+        314
+      ],
+      "mean_letter_mass": 0.3968,
+      "mean_letter_logprob_ABCD": [
+        -1.922,
+        -2.353,
+        -2.44,
+        -3.243
+      ]
+    },
+    "mmlu_0shot_eos": {
+      "n": 945,
+      "answered": 945,
+      "accuracy": 0.2222,
+      "calibrated_accuracy": 0.2667,
+      "pick_hist_ABCD": [
+        752,
+        90,
+        101,
+        2
+      ],
+      "calibrated_pick_hist_ABCD": [
+        188,
+        276,
+        239,
+        242
+      ],
+      "gold_hist_ABCD": [
+        198,
+        222,
+        211,
+        314
+      ],
+      "mean_letter_mass": 0.381,
+      "mean_letter_logprob_ABCD": [
+        -1.984,
+        -2.424,
+        -2.479,
+        -3.201
+      ]
+    },
+    "mmlu_5shot": {
+      "n": 945,
+      "answered": 945,
+      "accuracy": 0.2847,
+      "calibrated_accuracy": 0.3058,
+      "pick_hist_ABCD": [
+        259,
+        259,
+        193,
+        234
+      ],
+      "calibrated_pick_hist_ABCD": [
+        303,
+        195,
+        101,
+        346
+      ],
+      "gold_hist_ABCD": [
+        198,
+        222,
+        211,
+        314
+      ],
+      "mean_letter_mass": 0.963,
+      "mean_letter_logprob_ABCD": [
+        -1.578,
+        -1.403,
+        -1.389,
+        -1.623
+      ]
+    },
+    "mmlu_5shot_eos": {
+      "n": 945,
+      "answered": 945,
+      "accuracy": 0.2878,
+      "calibrated_accuracy": 0.3058,
+      "pick_hist_ABCD": [
+        249,
+        282,
+        178,
+        236
+      ],
+      "calibrated_pick_hist_ABCD": [
+        300,
+        216,
+        90,
+        339
+      ],
+      "gold_hist_ABCD": [
+        198,
+        222,
+        211,
+        314
+      ],
+      "mean_letter_mass": 0.9635,
+      "mean_letter_logprob_ABCD": [
+        -1.584,
+        -1.405,
+        -1.384,
+        -1.61
+      ]
+    },
+    "medqa_0shot": {
+      "n": 1273,
+      "answered": 1273,
+      "accuracy": 0.2781,
+      "calibrated_accuracy": 0.2561,
+      "pick_hist_ABCD": [
+        1079,
+        105,
+        88,
+        1
+      ],
+      "calibrated_pick_hist_ABCD": [
+        282,
+        338,
+        332,
+        321
+      ],
+      "gold_hist_ABCD": [
+        353,
+        309,
+        346,
+        265
+      ],
+      "mean_letter_mass": 0.327,
+      "mean_letter_logprob_ABCD": [
+        -2.053,
+        -2.693,
+        -2.716,
+        -3.421
+      ]
+    },
+    "medqa_0shot_eos": {
+      "n": 1273,
+      "answered": 1273,
+      "accuracy": 0.2765,
+      "calibrated_accuracy": 0.2514,
+      "pick_hist_ABCD": [
+        1061,
+        118,
+        90,
+        4
+      ],
+      "calibrated_pick_hist_ABCD": [
+        286,
+        337,
+        330,
+        320
+      ],
+      "gold_hist_ABCD": [
+        353,
+        309,
+        346,
+        265
+      ],
+      "mean_letter_mass": 0.3066,
+      "mean_letter_logprob_ABCD": [
+        -2.128,
+        -2.766,
+        -2.796,
+        -3.462
+      ]
+    },
+    "medqa_5shot": {
+      "n": 1273,
+      "answered": 1273,
+      "accuracy": 0.2781,
+      "calibrated_accuracy": 0.231,
+      "pick_hist_ABCD": [
+        1260,
+        13,
+        0,
+        0
+      ],
+      "calibrated_pick_hist_ABCD": [
+        297,
+        279,
+        314,
+        383
+      ],
+      "gold_hist_ABCD": [
+        353,
+        309,
+        346,
+        265
+      ],
+      "mean_letter_mass": 0.9631,
+      "mean_letter_logprob_ABCD": [
+        -0.784,
+        -1.42,
+        -2.139,
+        -1.999
+      ]
+    },
+    "medqa_5shot_eos": {
+      "n": 1273,
+      "answered": 1273,
+      "accuracy": 0.2797,
+      "calibrated_accuracy": 0.2333,
+      "pick_hist_ABCD": [
+        1267,
+        6,
+        0,
+        0
+      ],
+      "calibrated_pick_hist_ABCD": [
+        304,
+        278,
+        312,
+        379
+      ],
+      "gold_hist_ABCD": [
+        353,
+        309,
+        346,
+        265
+      ],
+      "mean_letter_mass": 0.9659,
+      "mean_letter_logprob_ABCD": [
+        -0.753,
+        -1.463,
+        -2.177,
+        -1.977
+      ]
+    }
+  },
+  "cloze": {
+    "mmlu": {
+      "n": 945,
+      "accuracy_sum_logprob": 0.2804,
+      "accuracy_mean_logprob": 0.2984,
+      "pick_hist_sum": [
+        289,
+        235,
+        188,
+        233
+      ],
+      "pick_hist_mean": [
+        235,
+        262,
+        197,
+        251
+      ]
+    },
+    "medqa": {
+      "n": 1273,
+      "accuracy_sum_logprob": 0.2529,
+      "accuracy_mean_logprob": 0.2891,
+      "pick_hist_sum": [
+        364,
+        273,
+        330,
+        306
+      ],
+      "pick_hist_mean": [
+        361,
+        312,
+        314,
+        286
+      ]
+    }
+  },
+  "samples": [
+    {
+      "prompt": "The patient presented with chest pain and",
+      "continuation": " dyspnea. The chest X-ray showed a large left pleural effusion. The patient was admitted to the intensive care unit and was started on intravenous fluids and diuretics. The patient was discharged on the 1st day of hospitalization. The patient was discharged on the 2"
+    },
+    {
+      "prompt": "Question: What is the function of the mitral valve?\nAnswer:",
+      "continuation": " The mitral valve is a ring-shaped structure that separates the left atrium from the left ventricle. The mitral valve is located between the left atrium and the left ventricle. The mitral valve is composed of three leaflets, the anterior leaflet, the posterior leaflet"
+    },
+    {
+      "prompt": "def fibonacci(n):\n",
+      "continuation": "- **\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*\n*"
+    },
+    {
+      "prompt": "The following are multiple choice questions (with answers) about anatomy.\n\nWhich bone is the longest in the human body?\nA. Tibia\nB. Femur\nC. Humerus\nD. Fibula\nAnswer:",
+      "continuation": " B. Tibia.\nAnswer: C. Femur.\nAnswer: D. Fibula.\nAnswer: E. Fibula.\nAnswer: F. Fibula.\nAnswer: G. Fibula.\nAnswer: H. Fibula.\nAnswer: H. Fibula"
+    }
+  ]
+}

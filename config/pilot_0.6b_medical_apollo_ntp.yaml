@@ -1,0 +1,19 @@
+# Medical quality-arm baseline: 0.6B student, Apollo only, no distillation.
+# Uses the same token budget and optimization schedule as the Python baseline.
+seed: 42
+model_size: 0.6b
+data_dir: /projects/u6wc/savants/data/packed/medical_apollo
+logit_dir: null
+output_dir: /projects/u6wc/savants/runs/pilot_0.6b_medical_apollo_ntp
+training:
+  steps: 30517
+  warmup_steps: 300
+  decay_start_step: 27465
+  learning_rate: 6.0e-4
+  lr_floor: 0.1
+  batch_sequences: 8
+  kd_ratio: 0.0
+  temperature: 1.0
+  logit_chunk: 1024
+  log_every: 20
+  save_every: 1000

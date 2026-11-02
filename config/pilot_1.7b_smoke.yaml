@@ -1,0 +1,20 @@
+# Two steps at the real batch of 8, to check that the 1.7B student fits
+# on one GPU before the full runs.
+seed: 42
+model_size: 1.7b
+data_dir: /projects/u6wc/savants/data/packed/python
+logit_dir: null
+output_dir: /projects/u6wc/savants/runs/pilot_1.7b_smoke
+training:
+  steps: 2
+  warmup_steps: 1
+  decay_start_step: 2
+  learning_rate: 6.0e-4
+  lr_floor: 0.1
+  batch_sequences: 8
+  grad_accumulation_steps: 1
+  kd_ratio: 0.0
+  temperature: 1.0
+  logit_chunk: 1024
+  log_every: 1
+  save_every: 10

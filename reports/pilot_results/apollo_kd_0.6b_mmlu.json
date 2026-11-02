@@ -1,0 +1,103 @@
+{
+  "checkpoint": "/projects/u6wc/savants/runs/pilot_0.6b_medical_apollo_kd/step_0030517.pt",
+  "mmlu": {
+    "0-shot": {
+      "overall": {
+        "n": 945,
+        "answered": 945,
+        "correct": 208,
+        "accuracy": 0.2201,
+        "skipped_length": 0
+      },
+      "subjects": {
+        "anatomy": {
+          "n": 135,
+          "answered": 135,
+          "correct": 32,
+          "accuracy": 0.237
+        },
+        "clinical knowledge": {
+          "n": 265,
+          "answered": 265,
+          "correct": 61,
+          "accuracy": 0.2302
+        },
+        "college medicine": {
+          "n": 173,
+          "answered": 173,
+          "correct": 38,
+          "accuracy": 0.2197
+        },
+        "medical genetics": {
+          "n": 100,
+          "answered": 100,
+          "correct": 29,
+          "accuracy": 0.29
+        },
+        "professional medicine": {
+          "n": 272,
+          "answered": 272,
+          "correct": 48,
+          "accuracy": 0.1765
+        }
+      }
+    },
+    "5-shot": {
+      "overall": {
+        "n": 945,
+        "answered": 945,
+        "correct": 273,
+        "accuracy": 0.2889,
+        "skipped_length": 0
+      },
+      "subjects": {
+        "anatomy": {
+          "n": 135,
+          "answered": 135,
+          "correct": 41,
+          "accuracy": 0.3037
+        },
+        "clinical knowledge": {
+          "n": 265,
+          "answered": 265,
+          "correct": 64,
+          "accuracy": 0.2415
+        },
+        "college medicine": {
+          "n": 173,
+          "answered": 173,
+          "correct": 36,
+          "accuracy": 0.2081
+        },
+        "medical genetics": {
+          "n": 100,
+          "answered": 100,
+          "correct": 30,
+          "accuracy": 0.3
+        },
+        "professional medicine": {
+          "n": 272,
+          "answered": 272,
+          "correct": 102,
+          "accuracy": 0.375
+        }
+      }
+    }
+  },
+  "medqa": {
+    "0-shot": {
+      "n": 1273,
+      "answered": 1273,
+      "correct": 354,
+      "accuracy": 0.2781,
+      "skipped_length": 0
+    },
+    "5-shot": {
+      "n": 1273,
+      "answered": 1273,
+      "correct": 354,
+      "accuracy": 0.2781,
+      "skipped_length": 0
+    }
+  }
+}
