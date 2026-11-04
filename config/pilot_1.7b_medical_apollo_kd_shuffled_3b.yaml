@@ -1,0 +1,34 @@
+# Continuation of pilot_1.7b_medical_apollo_kd_shuffled from its final (annealed)
+# checkpoint to 3.0B tokens in total (steps 30517 -> 91551), same data pool
+# (Apollo 30 shards + clean QA pack, seeded shuffle, epochs 1 and 2 are fresh
+# permutations), same objective. Scaling-law check requested by Jakub, 4 Nov
+# 2026: held-out loss and exams every ~0.5B tokens. The learning rate ramps
+# back from 6e-5 to 6e-4 over 500 steps, stays constant to 90% of the new
+# total, then decays as before. First job uses `resume:`; chained jobs with
+# RESUME_LATEST=1 pick up the newest checkpoint in output_dir instead.
+seed: 42
+model_size: 1.7b
+resume: /projects/u6wc/savants/runs/pilot_1.7b_medical_apollo_kd_shuffled/step_0030517.pt
+data:
+  - dir: /projects/u6wc/savants/data/packed/medical_apollo
+    logit_dir: /projects/u6wc/savants/data/logits/medical_apollo
+    shards: 30
+  - dir: /projects/u6wc/savants/data/packed/medical_apollo_qa_clean
+    logit_dir: /projects/u6wc/savants/data/logits/medical_apollo_qa_clean
+output_dir: /projects/u6wc/savants/runs/pilot_1.7b_medical_apollo_kd_shuffled_3b
+training:
+  shuffle: true
+  steps: 91551
+  warmup_steps: 300
+  rewarmup_from_step: 30517
+  rewarmup_steps: 500
+  decay_start_step: 82396
+  learning_rate: 6.0e-4
+  lr_floor: 0.1
+  batch_sequences: 8
+  grad_accumulation_steps: 1
+  kd_ratio: 1.0
+  temperature: 1.0
+  logit_chunk: 1024
+  log_every: 20
+  save_every: 5000

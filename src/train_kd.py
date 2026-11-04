@@ -277,14 +277,25 @@ class ShardCursor:
         )
 
 
-def learning_rate(step, total, warmup, decay_start, base, floor):
+def learning_rate(step, total, warmup, decay_start, base, floor, rewarmup=None):
+    """Warm-up, constant, cosine decay to ``floor * base``.
+
+    ``rewarmup`` is an optional ``(from_step, steps)`` pair for a run continued
+    from an annealed checkpoint: the rate ramps linearly from ``floor * base``
+    back to the schedule's value over ``steps`` steps starting at ``from_step``.
+    """
     if step < warmup:
-        return base * (step + 1) / max(1, warmup)
-    if step < decay_start:
-        return base
-    progress = (step - decay_start) / max(1, total - decay_start)
-    cosine = 0.5 * (1 + math.cos(math.pi * progress))
-    return base * (floor + (1 - floor) * cosine)
+        lr = base * (step + 1) / max(1, warmup)
+    elif step < decay_start:
+        lr = base
+    else:
+        progress = (step - decay_start) / max(1, total - decay_start)
+        cosine = 0.5 * (1 + math.cos(math.pi * progress))
+        lr = base * (floor + (1 - floor) * cosine)
+    if rewarmup and rewarmup[0] <= step < rewarmup[0] + rewarmup[1]:
+        fraction = (step - rewarmup[0] + 1) / rewarmup[1]
+        lr = lr * (floor + (1 - floor) * fraction)
+    return lr
 
 
 def load_latest_checkpoint(output_dir):
@@ -348,11 +359,17 @@ def main():
     torch.cuda.manual_seed_all(seed)
 
     device = "cuda"
-    resume = cfg.get("resume")
-    state = torch.load(resume, map_location="cpu", weights_only=False) if resume else None
-    if state is None and args.resume_latest:
+    # --resume-latest prefers the newest checkpoint already in output_dir, so a
+    # chained continuation run (config `resume:` pointing at another run's
+    # checkpoint) picks up its own progress on the second job instead of
+    # restarting from the foreign checkpoint.
+    resume, state = None, None
+    if args.resume_latest:
         resume, state = load_latest_checkpoint(cfg["output_dir"])
-        print(f"resume-latest: {resume or 'no checkpoint, starting fresh'}", flush=True)
+        print(f"resume-latest: {resume or 'no checkpoint in output_dir'}", flush=True)
+    if state is None and cfg.get("resume"):
+        resume = cfg["resume"]
+        state = torch.load(resume, map_location="cpu", weights_only=False)
     model_size, model_config = resolve_student(cfg, state)
     model = build_student(model_config).to(device)
     parameters = sum(p.numel() for p in model.parameters())
@@ -400,6 +417,10 @@ def main():
             f"which are already at temperature 1; config has temperature {temperature}"
         )
     objective = objective_name(kd_ratio)
+    rewarmup = None
+    if train.get("rewarmup_steps"):
+        rewarmup = (int(train["rewarmup_from_step"]), int(train["rewarmup_steps"]))
+        print(f"rewarmup over {rewarmup[1]} steps from step {rewarmup[0]}", flush=True)
     chunk = train.get("logit_chunk", 1024)
     accum = train.get("grad_accumulation_steps", 1)
     print(f"objective {objective} kd_ratio {kd_ratio:g}", flush=True)
@@ -407,7 +428,7 @@ def main():
     model.train()
     optimizer.zero_grad(set_to_none=True)
     while step < total:
-        lr = learning_rate(step, total, warmup, decay_start, base_lr, train.get("lr_floor", 0.1))
+        lr = learning_rate(step, total, warmup, decay_start, base_lr, train.get("lr_floor", 0.1), rewarmup)
         for group in optimizer.param_groups:
             group["lr"] = lr
         ce_sum = kd_sum = loss_sum = 0.0

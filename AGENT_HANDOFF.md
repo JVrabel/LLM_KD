@@ -433,3 +433,28 @@ answer-text exams every 0.5B tokens; decide on the 9B PubMed run from that
 curve. The trainer's cursor supports epochs (`epoch` in the cursor state), so
 this is a config with `steps: 91551` resumed from `step_0030517.pt`; note the
 LR schedule would restart its decay phase unless `decay_start_step` is moved.
+
+## 4 Nov 2026: 3B-token continuation (Jakub approved ~170 GPU-h)
+
+Scaling check: continue both shuffled distilled students from their final
+checkpoint (step 30517, annealed) to step 91551 = 3.0B tokens on the same
+pool, with exams and the shard-31 sweep at steps 45000/60000/75000/91551.
+
+- Trainer: `training.rewarmup_from_step` + `rewarmup_steps` ramp the LR
+  from the floor back to the schedule (needed because the checkpoint ended
+  at 6e-5). `--resume-latest` now takes precedence over a config `resume:`
+  path when output_dir already holds a checkpoint, so chained jobs continue
+  their own run.
+- Configs `config/pilot_{0.6b,1.7b}_medical_apollo_kd_shuffled_3b.yaml`
+  (resume from the `_shuffled` step_0030517.pt, steps 91551, decay_start
+  82396, save_every 5000, output `runs/..._shuffled_3b`). Smoke config
+  `config/smoke_0.6b_kd_3b.yaml` (40 steps, save_every 20) to verify the
+  resume, the re-warmup and the resume-latest precedence before the chain.
+- `scripts/isambard/submit_3b.sh SIZE JOBS` (cluster copy `scripts/submit_3b.sh`)
+  submits the chain plus evals: `logs/apollo_kd_SIZE_3b_stepN_mmlu.json`,
+  `logs/diag/forget_pilot_SIZE_medical_apollo_kd_shuffled_3b.json`.
+- Expected: 0.6B two 24 h jobs (~39 h), 1.7B three (~68 h), evals ~15 GPU-h;
+  total ~120 GPU-h. Prediction to check (beta 0.40 fit): 1.7B held-out shard
+  31 = 2.44 at 3B tokens (2.55 at 1B).
+- Disk: 1.7B checkpoints are 23 GB each; 13 new ones = 300 GB. Check quota
+  before submitting (`df -h /projects/u6wc`).
