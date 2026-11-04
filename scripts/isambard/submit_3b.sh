@@ -5,6 +5,8 @@
 # tokens. Run on the cluster from /projects/u6wc/savants:
 #   bash scripts/submit_3b.sh 0.6b 2      # two 24 h jobs (about 39 h)
 #   bash scripts/submit_3b.sh 1.7b 3      # three 24 h jobs (about 68 h)
+# AFTER=<jobid> makes the first training job wait for that job to succeed
+# (used to gate the chain on the smoke test).
 set -euo pipefail
 SIZE="${1:?size, e.g. 0.6b}"
 JOBS="${2:?number of chained 24 h training jobs}"
@@ -14,10 +16,10 @@ CONFIG="$S/config/pilot_${SIZE}_medical_apollo_kd_shuffled_3b.yaml"
 RUN_DIR="$S/runs/pilot_${SIZE}_medical_apollo_kd_shuffled_3b"
 cd "$S"
 
-prev=""
+prev="${AFTER:-}"
 for i in $(seq 1 "$JOBS"); do
     dep=()
-    if [[ -n "$prev" ]]; then dep=(--dependency="afterany:$prev"); fi
+    if [[ "$i" == 1 && -n "$prev" ]]; then dep=(--dependency="afterok:$prev"); elif [[ -n "$prev" ]]; then dep=(--dependency="afterany:$prev"); fi
     jid=$(sbatch --parsable --job-name="$NAME" "${dep[@]}" \
         --output="$S/logs/${NAME}_%j.log" \
         --export=ALL,CONFIG="$CONFIG",RESUME_LATEST=1 \

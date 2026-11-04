@@ -458,3 +458,12 @@ pool, with exams and the shard-31 sweep at steps 45000/60000/75000/91551.
   31 = 2.44 at 3B tokens (2.55 at 1B).
 - Disk: 1.7B checkpoints are 23 GB each; 13 new ones = 300 GB. Check quota
   before submitting (`df -h /projects/u6wc`).
+
+Submitted 4 Nov 2026 08:35 UTC (all pending until the cooling shutdown ends
+at 17:00 UTC): smoke 8064644 (`logs/smoke_kd_3b_8064644.log`, gates both
+chains with afterok). 0.6B: train 8064645 → 8064646, exams 8064647–8064650,
+sweep 8064651. 1.7B: train 8064652 → 8064653 → 8064654, exams
+8064655–8064658, sweep 8064659. Logs `logs/apollo_kd_{0.6b,1.7b}_3b_<job>.log`.
+If the smoke fails, everything downstream is cancelled by Slurm
+(DependencyNeverSatisfied); fix, rerun the smoke, and resubmit with
+`AFTER=<new smoke> bash scripts/submit_3b.sh SIZE JOBS`.
