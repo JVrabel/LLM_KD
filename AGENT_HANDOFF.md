@@ -467,3 +467,8 @@ sweep 8064651. 1.7B: train 8064652 → 8064653 → 8064654, exams
 If the smoke fails, everything downstream is cancelled by Slurm
 (DependencyNeverSatisfied); fix, rerun the smoke, and resubmit with
 `AFTER=<new smoke> bash scripts/submit_3b.sh SIZE JOBS`.
+5 Nov 2026 12:00 UTC: smoke passed; both chains running since 4 Nov 18:45 UTC
+(0.6B job 8064645 at step 57k, 1.7B job 8064652 at 46k). Early exam evals on
+the step 45000 checkpoints submitted as 8090711 (0.6B) / 8090712 (1.7B),
+outputs `logs/apollo_kd_{0.6b,1.7b}_3b_step45000_mmlu.json`; the queued
+duplicates 8064647 / 8064655 were cancelled.
