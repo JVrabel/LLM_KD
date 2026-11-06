@@ -478,3 +478,5 @@ evals 8064648–8064651 done, results copied to `reports/pilot_results/`
 1.7B on job 8064653 at step 65.6k; early eval of its step 60000 submitted
 as 8131323 (queued duplicate 8064656 cancelled). Remaining queue: 8064654
 (third 1.7B job), 8064657/8064658 exams, 8064659 sweep.
+1.7B mid-run exams (constant LR, not annealed): step 45000 MMLU 32.3 / 34.4,
+MedQA 31.0 / 32.7; step 60000 (8131323) MMLU 32.4 / 32.7, MedQA 30.6 / 29.3.
