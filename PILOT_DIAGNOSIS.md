@@ -491,3 +491,29 @@ measured anneal gain (0.11–0.15 nats).
 - Two-size joint Chinchilla fit (weakly determined): compute-optimal for the
   9B-token 1.7B budget is 2.3B parameters at 5.5B tokens.
 - Written up in `reports/PILOT_REPORT.md` (the 1–2 pager Jakub asked for).
+
+## 6 Nov 2026: 0.6B distilled continued to 3B tokens
+
+Continuation of the shuffled 0.6B distilled student from step 30517 to 91551
+(jobs 8064645/8064646, same pool, epochs 2 and 3 are fresh permutations, LR
+re-warmed over 500 steps). Results `reports/pilot_results/apollo_kd_0.6b_3b_step*_mmlu.json`
+and `diag/forget_pilot_0.6b_medical_apollo_kd_shuffled_3b.json`.
+
+| 0.6B distilled | 1.0B (final, annealed) | 1.47B | 1.97B | 2.46B | 3.0B (final, annealed) |
+|---|---|---|---|---|---|
+| MMLU answer-text 0 / 3-shot | 31.1 / 32.8 | 30.2 / 32.3 | 31.5 / 31.3 | 32.6 / 31.8 | **33.9 / 35.3** |
+| MedQA answer-text 0 / 3-shot | 30.6 / 32.6 | 29.4 / 30.6 | 28.1 / 29.1 | 28.9 / 28.5 | 30.3 / 31.9 |
+| loss on unseen shard 31 | 2.678 | 2.790 | 2.762 | 2.751 | **2.535** |
+
+- Held-out loss fell 0.14 nats from 1B to 3B tokens. The 2 Nov fit
+  predicted 2.570 (beta 0.40), 2.521 (beta 0.28), 2.656 (free exponent):
+  the measured 2.535 sits between the two fixed exponents, on the
+  optimistic side of beta 0.40. The exponent 0.40 is confirmed as the
+  conservative choice.
+- MMLU moved for the first time: +2.8 / +2.5 points over the 1B final,
+  about 1.8 standard errors, and the 0-shot score rises monotonically
+  across the constant-LR checkpoints (30.2, 31.5, 32.6) before the anneal.
+  MedQA did not move (within noise, slightly down).
+- Mid-run checkpoints score below the annealed 1B final on the exams even
+  when their training loss is lower, so only annealed checkpoints are
+  comparable on exams.

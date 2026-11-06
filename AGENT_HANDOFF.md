@@ -472,3 +472,9 @@ If the smoke fails, everything downstream is cancelled by Slurm
 the step 45000 checkpoints submitted as 8090711 (0.6B) / 8090712 (1.7B),
 outputs `logs/apollo_kd_{0.6b,1.7b}_3b_step45000_mmlu.json`; the queued
 duplicates 8064647 / 8064655 were cancelled.
+6 Nov 2026 12:30 UTC: 0.6B chain finished (8064646 completed after 17 h);
+evals 8064648–8064651 done, results copied to `reports/pilot_results/`
+(3B final: MMLU 33.9 / 35.3, MedQA 30.3 / 31.9, shard 31 loss 2.535).
+1.7B on job 8064653 at step 65.6k; early eval of its step 60000 submitted
+as 8131323 (queued duplicate 8064656 cancelled). Remaining queue: 8064654
+(third 1.7B job), 8064657/8064658 exams, 8064659 sweep.
