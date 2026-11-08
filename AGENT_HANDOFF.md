@@ -488,3 +488,10 @@ step_0090000.pt), exam on step 75000 8200120 (no dependency), final exam
 steps/min a 24 h job covers 21,100 steps, and each resume loses up to 5,000
 steps of progress with save_every 5000, so a 61k-step continuation needs
 four jobs, not three.
+8 Nov 2026 17:30 UTC: 1.7B finished (8200119), evals 8200120–8200122 done.
+Final 3B: MMLU 33.1 / 36.7, MedQA 32.0 / 32.5, shard 31 loss 2.404 (2.44
+predicted). Both continuations complete; results, refit
+(`reports/pilot_results/scaling_fit_3b.json`) and notes committed;
+PILOT_REPORT.md section 8 added. Nothing queued. Continuation cost about
+113 GPU-h. Loss curves of the continuation runs: `logs/apollo_kd_{0.6b,1.7b}_3b_*.log`
+(CSV copies in `reports/pilot_results/curves/*_3b.csv` if the copy went through).

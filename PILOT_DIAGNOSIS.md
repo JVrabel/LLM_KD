@@ -517,3 +517,44 @@ and `diag/forget_pilot_0.6b_medical_apollo_kd_shuffled_3b.json`.
 - Mid-run checkpoints score below the annealed 1B final on the exams even
   when their training loss is lower, so only annealed checkpoints are
   comparable on exams.
+
+## 8 Nov 2026: 1.7B distilled continued to 3B tokens, and the fit revisited
+
+Jobs 8064652/8064653/8064654 + finishing job 8200119 (the third 24 h job
+timed out 231 steps short; see AGENT_HANDOFF). Results
+`reports/pilot_results/apollo_kd_1.7b_3b_step*_mmlu.json`,
+`diag/forget_pilot_1.7b_medical_apollo_kd_shuffled_3b.json`.
+
+| distilled, annealed finals | 0.6B at 1B | 0.6B at 3B | 1.7B at 1B | 1.7B at 3B |
+|---|---|---|---|---|
+| MMLU answer-text 0 / 3-shot | 31.1 / 32.8 | 33.9 / 35.3 | 31.0 / 32.8 | **33.1 / 36.7** |
+| MedQA answer-text 0 / 3-shot | 30.6 / 32.6 | 30.3 / 31.9 | 31.2 / 31.8 | 32.0 / 32.5 |
+| loss on unseen shard 31 | 2.678 | 2.535 | 2.554 | **2.404** |
+| 2 Nov prediction for 3B (beta 0.40) | | 2.570 | | 2.44 |
+
+Mid-run 1.7B checkpoints (constant LR): MMLU 32.3 / 34.4, 32.4 / 32.7,
+33.2 / 32.5 and MedQA 31.0 / 32.7, 30.6 / 29.3, 32.4 / 30.6 at 1.47, 1.97
+and 2.46B tokens; shard 31 loss 2.668, 2.643, 2.628.
+
+- **The loss prediction held at both sizes**, and was conservative by
+  0.035 nats each time. Tripling the tokens lowered held-out loss by 0.14
+  (0.6B) and 0.15 nats (1.7B).
+- **MMLU moved at both sizes**: +2.8 / +2.5 (0.6B) and +2.1 / +3.9 (1.7B),
+  all four comparisons up, two of them beyond 1.5 standard errors. 36.7 is
+  the best exam number of the project. MedQA did not move at either size.
+  First empirical slope: about +3 MMLU points per tripling of tokens.
+- **Refit on the held-out trajectory** (`reports/pilot_results/scaling_fit_3b.json`):
+  the eight constant-LR checkpoints from 0.16 to 2.46B tokens fit a steeper
+  exponent (0.54 at 0.6B, 0.61 at 1.7B, rms 0.003–0.004) with a higher
+  plateau than the 2 Nov training-curve fit, but the anneal bonus grows
+  with tokens (0.16 nats at 1B, 0.20–0.21 at 3B), so the annealed curve
+  falls faster than the constant-LR curve. Fits with beta 0.28 and 0.40 are
+  3 to 8 times worse in rms on these points. Caveat: epochs 2 and 3 repeat
+  the pool, which may flatten the constant-LR curve slightly relative to
+  fresh data.
+- Predictions for the 1.7B annealed held-out loss at 9B tokens: 2.26
+  (beta 0.28, 2 Nov fit), 2.36 (beta 0.40), 2.38 (new free fit with the
+  measured anneal). The two annealed measurements (2.554, 2.404) are
+  consistent with any of these; the realistic range for 9B is 2.26 to 2.38.
+- Budget: continuation used about 112 GPU-h training plus about 1 GPU-h
+  of evals (each exam job took 2 to 3 minutes, the sweeps 3 to 6).

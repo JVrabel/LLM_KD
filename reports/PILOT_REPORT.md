@@ -1,6 +1,6 @@
 # From-scratch distillation pilots: 0.6B and 1.7B students at 1B tokens
 
-Marek Licko, 2 November 2026. Repository: github.com/JVrabel/LLM_KD, branch `hpc_branch`.
+Marek Licko, 2 November 2026, updated 8 November 2026 (section 8). Repository: github.com/JVrabel/LLM_KD, branch `hpc_branch`.
 Raw results: `reports/pilot_results/`; running notes: `PILOT_DIAGNOSIS.md`, `AGENT_HANDOFF.md`.
 
 ## 1. Question
@@ -152,3 +152,37 @@ every 0.5B tokens. This triples the token range of the fit, checks the exponent,
 gives the first exam-versus-tokens curve. A 9B-token single-domain run with new PubMed
 logits (about 1,000 GPU-hours, needs data-parallel training to fit the deadline) is
 only worth it if that curve shows the exams starting to move.
+
+## 8. Update, 8 November: both distilled students continued to 3B tokens
+
+Jakub's suggested check: continue the two shuffled distilled students from
+their 1B checkpoints to 3B tokens on the same pool (two more passes, fresh
+permutations, learning rate re-warmed over 500 steps, then the same schedule),
+evaluating every 0.5B tokens. Cost 113 GPU-hours.
+
+| distilled, annealed finals | 0.6B at 1B | 0.6B at 3B | 1.7B at 1B | 1.7B at 3B |
+|---|---|---|---|---|
+| MMLU medical, answer-text 0 / 3-shot | 31.1 / 32.8 | 33.9 / 35.3 | 31.0 / 32.8 | 33.1 / 36.7 |
+| MedQA, answer-text 0 / 3-shot | 30.6 / 32.6 | 30.3 / 31.9 | 31.2 / 31.8 | 32.0 / 32.5 |
+| held-out loss, unseen shard 31 | 2.678 | 2.535 | 2.554 | 2.404 |
+| section 6 prediction for 3B | | 2.570 | | 2.44 |
+
+- The scaling fit held at both sizes and was conservative by 0.035 nats.
+  Distillation follows an ordinary data power law here.
+- MMLU moved for the first time: +2 to +4 points at both sizes, all four
+  comparisons up, the two 3-shot gains beyond 1.5 standard errors. That is
+  the first measured slope, about +3 MMLU points per tripling of tokens.
+  MedQA did not move at either size.
+- Mid-run checkpoints score below the annealed finals on exams even when
+  their loss is lower; only annealed checkpoints are comparable.
+- With the 15-fold token range now covered, the held-out trajectory fits a
+  steeper exponent (0.54 to 0.61) with a higher plateau, but the anneal
+  gain grows with tokens (0.16 nats at 1B, 0.21 at 3B). Predictions for the
+  1.7B at 9B tokens range from 2.26 to 2.38 nats on the unseen shard. The
+  gap to the teacher, about 0.44 nats at 1B on the same text, is 0.29 at
+  3B and would be roughly 0.15 to 0.27 at 9B.
+- Extrapolating the measured exam slope, a 9B-token 1.7B run would be
+  expected around 36 to 40 on medical MMLU, 27B around 40 to 43. The
+  teacher is at 88.6, so the "within 2x of the teacher" mark (44) needs
+  tens of billions of tokens of this corpus, or data with denser knowledge
+  per token.
