@@ -480,3 +480,11 @@ as 8131323 (queued duplicate 8064656 cancelled). Remaining queue: 8064654
 (third 1.7B job), 8064657/8064658 exams, 8064659 sweep.
 1.7B mid-run exams (constant LR, not annealed): step 45000 MMLU 32.3 / 34.4,
 MedQA 31.0 / 32.7; step 60000 (8131323) MMLU 32.4 / 32.7, MedQA 30.6 / 29.3.
+8 Nov 2026 14:00 UTC: 1.7B job 3 (8064654) timed out at step 91320, 231
+steps short; the afterok evals 8064657/8064658/8064659 were cancelled by
+Slurm. Resubmitted: finishing job 8200119 (4 h limit, resumes from
+step_0090000.pt), exam on step 75000 8200120 (no dependency), final exam
+8200121 and shard sweep 8200122 afterok on 8200119. Lesson: at 14.7
+steps/min a 24 h job covers 21,100 steps, and each resume loses up to 5,000
+steps of progress with save_every 5000, so a 61k-step continuation needs
+four jobs, not three.
