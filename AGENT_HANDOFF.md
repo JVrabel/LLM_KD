@@ -551,3 +551,22 @@ Planned chains (need go-ahead; commands run from /projects/u6wc/savants):
    generation time: pipeline not written yet; only if time remains.
 
 Budget: ≈70 + 610 + 165 + 60 + 110 + evals ≈ 1,050 GPU-h.
+
+10 Nov 2026 ~00:30 UTC, Marek approved; smoke 8246947 passed (shard list +
+reset_cursor + re-warmup OK), Cosmopedia pack 8247068 done (9 shards), PubMed
+held-out baselines done (`logs/diag/forget_pilot_SIZE_medical_apollo_kd_shuffled_3b_medical.json`:
+0.6B 2.03/2.44/2.35/2.28, 1.7B 1.93/2.33/2.24/2.16 on shards 35/100/200/285).
+Submitted:
+- NTP 1.7B 3B chain: 8247972 → 8247975 → 8247977 → 8247979; exams 8247981
+  (60000), 8247983 (91551); sweep 8247984. Logs `logs/apollo_ntp_1.7b_3b_*.log`.
+- PubMed logits, 4 chains × 4 jobs: c0 8247985→8248062→8248063→8248064,
+  c1 8248065→…→8248068, c2 8248069→…→8248072, c3 8248073→…→8248076
+  (`logs/logits_medical_c*_<job>.log`, last jobs in `logs/logits_medical_last_jobs.txt`).
+- Cosmopedia logits: 8248077 → 8248078 (`logs/logits_cosmopedia_c0_*.log`).
+- Controls (Apollo 4th pass, 1B tokens from the 3B checkpoints): 0.6B
+  8248079 → 8248080, exam 8248081, sweep 8248082; 1.7B 8248083 → 8248084 →
+  8248085, exam 8248086, sweep 8248087.
+Still to submit when their logits are done: the 6B PubMed continuations (item 3
+above; gate on the four last logit jobs or on the 90 `.done` files) and the
+Cosmopedia mix runs (item 4; gate on 8248078). Watch for: first logit job
+failing on `--shard-numbers` or vLLM startup; NTP chain needs 4 jobs.
