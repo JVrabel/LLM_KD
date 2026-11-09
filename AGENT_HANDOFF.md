@@ -495,3 +495,59 @@ predicted). Both continuations complete; results, refit
 PILOT_REPORT.md section 8 added. Nothing queued. Continuation cost about
 113 GPU-h. Loss curves of the continuation runs: `logs/apollo_kd_{0.6b,1.7b}_3b_*.log`
 (CSV copies in `reports/pilot_results/curves/*_3b.csv` if the copy went through).
+
+## 9 Nov 2026: plan for the remaining budget (Jakub: 1,500–2,000 GPU-h max, two branches)
+
+Jakub (9 Nov): go further on scaling, NTP is low priority (only show robustly
+that it stays behind distillation), then focus on distilled/mixed training; a
+"minimal general knowledge" corpus may be what the teacher had and we lack.
+Details left to Marek. Everything below is prepared; the long jobs wait for
+Marek's go-ahead. Deadline logic: 1.7B trains 1B tokens in ~35 h, logits cost
+~190 GPU-h per 1B tokens at 2.8k tok/s on two GPUs, so the binding constraints
+are wall clock (project ends 24 Nov) and logits, not GPU-hours.
+
+Facts found today:
+- The `data/packed/medical` pack (287 shards, 9.6B tokens, no logits) is in
+  file order: shards 0–32 are the Apollo text (same documents as
+  `medical_apollo`, including the held-out shard 31), shards 33–286 are PubMed
+  abstracts in date order. PubMed duplicates of Apollo text were removed when
+  it was built.
+- Both NTP shuffled runs have held-out points at the same six checkpoints as
+  the distilled runs, so an NTP-only law on 0.16–1B exists already
+  (`scaling_fit.json`): gap NTP−KD is flat, 0.29–0.32 nats (0.6B) and
+  0.30–0.36 (1.7B); NTP needs 2.5–4x the tokens for the same held-out loss.
+
+Code (commit 05a1979, synced): shard lists in `data[].shards`,
+`training.reset_cursor`, `--shard-numbers`/`SHARD_NUMBERS` in the logit
+script, `--max-shards` in `pack_shards.py`, `scripts/submit_chain.sh`,
+`scripts/submit_logits.sh`, `scripts/download_cosmopedia.sh`,
+`scripts/pack_cosmopedia.slurm`.
+
+Submitted 9 Nov ~23:00 UTC (short jobs): smoke 8246947
+(`config/smoke_1.7b_kd_shardlist.yaml`, 40 steps from the 1.7B 3B checkpoint
+over shards [0,15,29], tests the list path and reset_cursor); PubMed held-out
+baseline on the 3B checkpoints 8246950 (0.6B) / 8246952 (1.7B), medical pack
+shards 35 100 200 285 → `logs/diag/forget_pilot_SIZE_medical_apollo_kd_shuffled_3b_medical.json`;
+Cosmopedia pack 8247068 (two parquet files downloaded to
+`data/raw/cosmopedia`, pack → `data/packed/cosmopedia`, 9 shards = 0.3B tokens).
+
+Planned chains (need go-ahead; commands run from /projects/u6wc/savants):
+
+1. Branch 1a, NTP twin to 3B (≈70 GPU-h, 4 × 24 h):
+   `NAME=apollo_ntp_1.7b_3b CONFIG=config/pilot_1.7b_medical_apollo_ntp_shuffled_3b.yaml RUN_DIR=runs/pilot_1.7b_medical_apollo_ntp_shuffled_3b JOBS=4 EVAL_STEPS="60000 91551" SWEEPS="data/packed/medical_apollo:0 4 8 12 16 20 24 28 31" bash scripts/submit_chain.sh`
+2. Branch 1b, teacher logits for 90 PubMed shards (≈610 GPU-h, 4 chains × 4 × 24 h on 2 GPUs, ~3.3 days):
+   `PACK=data/packed/medical LOGIT_DIR=data/logits/medical SHARDS=<list in config/pilot_1.7b_medical_pubmed_kd_6b.yaml> CHAINS=4 JOBS=4 bash scripts/submit_logits.sh`
+   (shard list: 33,36,...,286, 90 numbers; logits land in `data/logits/medical/shard-000NN.*`, ~1.1 TB).
+3. Branch 1b, distilled 3B→6B on the new tokens after the logits (0.6B ≈60 GPU-h 3 jobs + 1 finishing; 1.7B ≈105 GPU-h 5 + 1 finishing; must start by ~13 Nov):
+   `NAME=pubmed_kd_SIZE_6b CONFIG=config/pilot_SIZE_medical_pubmed_kd_6b.yaml RUN_DIR=runs/pilot_SIZE_medical_pubmed_kd_6b JOBS=N EVAL_STEPS="120000 150000 183102" SWEEPS="data/packed/medical_apollo:0 4 8 12 16 20 24 28 31;data/packed/medical:35 100 200 285" bash scripts/submit_chain.sh`
+   Gate the first job on the last logit jobs (`logs/logits_medical_last_jobs.txt`) or submit when all 90 `.done` files exist.
+4. Branch 2a, Cosmopedia logits (9 shards ≈60 GPU-h, 1 chain × 2 jobs) after pack 8247068:
+   `PACK=data/packed/cosmopedia LOGIT_DIR=data/logits/cosmopedia SHARDS=0,1,2,3,4,5,6,7,8 CHAINS=1 JOBS=2 bash scripts/submit_logits.sh`
+   then mix vs control, both sizes (0.6B 20 GPU-h each, 1.7B 35 each; 1 and 2 jobs):
+   `NAME=cosmo_mix_SIZE CONFIG=config/pilot_SIZE_cosmo_mix_kd.yaml RUN_DIR=runs/pilot_SIZE_cosmo_mix_kd JOBS=N EVAL_STEPS="122068" SWEEPS="data/packed/medical_apollo:0 4 8 12 16 20 24 28 31" bash scripts/submit_chain.sh`
+   `NAME=apollo_e4_SIZE CONFIG=config/pilot_SIZE_apollo_e4_kd.yaml RUN_DIR=runs/pilot_SIZE_apollo_e4_kd JOBS=N EVAL_STEPS="122068" SWEEPS=... bash scripts/submit_chain.sh`
+   (control needs no new logits, can start right away).
+5. Branch 2b, teacher-generated medical rewrites with logprobs captured at
+   generation time: pipeline not written yet; only if time remains.
+
+Budget: ≈70 + 610 + 165 + 60 + 110 + evals ≈ 1,050 GPU-h.
