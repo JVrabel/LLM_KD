@@ -155,9 +155,11 @@ def topk_forward_kl(hidden, weight, teacher_ids, teacher_logprobs, chunk):
 def data_sources(cfg):
     """Packed sources from ``data`` (a list) or the single ``data_dir``/``logit_dir`` pair.
 
-    Each entry has ``dir``, an optional ``logit_dir`` and an optional ``shards``
-    cap, which uses only the first that many shards of the pack (the Apollo
-    pack has 33 shards but teacher logits for 30).
+    Each entry has ``dir``, an optional ``logit_dir`` and an optional ``shards``:
+    an integer uses only the first that many shards of the pack (the Apollo
+    pack has 33 shards but teacher logits for 30); a list names the shard
+    numbers to use (the PubMed continuation of November 2026 takes 90 shards
+    spread over the date-ordered medical pack).
     """
     entries = cfg.get("data")
     if entries is None:
@@ -199,13 +201,18 @@ class ShardCursor:
                 self.seq_len = meta["seq_len"]
             elif meta["seq_len"] != self.seq_len:
                 raise SystemExit(f"{source['dir']} has seq_len {meta['seq_len']}, expected {self.seq_len}")
-            counts = meta["shards"]
-            if source.get("shards") is not None:
-                counts = counts[: source["shards"]]
+            selected = source.get("shards")
+            if selected is None:
+                numbers = list(range(len(meta["shards"])))
+            elif isinstance(selected, int):
+                numbers = list(range(min(selected, len(meta["shards"]))))
+            else:
+                numbers = [int(n) for n in selected]
             logit_dir = source.get("logit_dir") if use_logits else None
             if use_logits and not logit_dir:
                 raise SystemExit(f"{source['dir']} has no logit_dir but the objective needs teacher logits")
-            for number, count in enumerate(counts):
+            for number in numbers:
+                count = meta["shards"][number]
                 self.paths.append(os.path.join(source["dir"], f"shard-{number:05d}.bin"))
                 self.counts.append(count)
                 stem = os.path.join(logit_dir, f"shard-{number:05d}") if logit_dir else None
@@ -390,6 +397,13 @@ def main():
         cursor_state = state["cursor"]
         del state
         print(f"resumed at step {step} from {resume}", flush=True)
+        if train.get("reset_cursor"):
+            # Continuing on a different data pool: start that pool's first
+            # permutation from the beginning instead of carrying over a
+            # position that meant something in the old pool.
+            cursor_state = {"position": 0, "epoch": 0,
+                            "shuffle_seed": cursor_state.get("shuffle_seed")}
+            print("reset_cursor: data cursor restarted at epoch 0 position 0", flush=True)
 
     kd_ratio = float(train.get("kd_ratio", 0.0))
     if kd_ratio < 0.0 or kd_ratio > 1.0:

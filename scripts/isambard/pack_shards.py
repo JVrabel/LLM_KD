@@ -84,6 +84,8 @@ def main():
     parser.add_argument("--shard-seqs", type=int, default=8192)
     parser.add_argument("--shuffle-seed", type=int, default=None,
                         help="write documents in a seeded random order; default is file order")
+    parser.add_argument("--max-shards", type=int, default=0,
+                        help="stop after this many full shards (a random subset with --shuffle-seed)")
     args = parser.parse_args()
 
     meta_path = os.path.join(args.out, "meta.json")
@@ -113,6 +115,7 @@ def main():
         shard_counts.append(filled)
         filled = 0
 
+    stopped = False
     for text in documents(args.jsonl, args.shuffle_seed):
         docs += 1
         ids = tokenizer.encode(text, add_special_tokens=False)
@@ -125,10 +128,17 @@ def main():
             sequences += 1
             if filled == args.shard_seqs:
                 flush()
+                if args.max_shards and len(shard_counts) >= args.max_shards:
+                    stopped = True
+                    break
+        if stopped:
+            print(f"stopped after {len(shard_counts)} shards", flush=True)
+            break
         if docs % 20000 == 0:
             print(f"docs {docs}  sequences {sequences}", flush=True)
 
-    flush()
+    if not stopped:
+        flush()
     meta = {
         "seq_len": args.seq_len,
         "eos_token_id": eos,

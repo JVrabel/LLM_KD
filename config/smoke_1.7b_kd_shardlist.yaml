@@ -1,0 +1,30 @@
+# Smoke test (9 Nov 2026) for the shard-list data source and reset_cursor on a
+# resumed checkpoint: 40 steps from the 3B-token 1.7B checkpoint over three
+# named Apollo shards. Checks the code path before the PubMed/Cosmopedia chains.
+seed: 42
+model_size: 1.7b
+resume: /projects/u6wc/savants/runs/pilot_1.7b_medical_apollo_kd_shuffled_3b/step_0091551.pt
+data:
+  - dir: /projects/u6wc/savants/data/packed/medical_apollo
+    logit_dir: /projects/u6wc/savants/data/logits/medical_apollo
+    shards: [0, 15, 29]
+  - dir: /projects/u6wc/savants/data/packed/medical_apollo_qa_clean
+    logit_dir: /projects/u6wc/savants/data/logits/medical_apollo_qa_clean
+output_dir: /projects/u6wc/savants/runs/smoke_1.7b_kd_shardlist
+training:
+  shuffle: true
+  reset_cursor: true
+  steps: 91591
+  warmup_steps: 300
+  rewarmup_from_step: 91551
+  rewarmup_steps: 500
+  decay_start_step: 164792
+  learning_rate: 6.0e-4
+  lr_floor: 0.1
+  batch_sequences: 8
+  grad_accumulation_steps: 1
+  kd_ratio: 1.0
+  temperature: 1.0
+  logit_chunk: 1024
+  log_every: 5
+  save_every: 20

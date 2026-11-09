@@ -1,0 +1,35 @@
+# "Minimal general knowledge" test (Jakub, 9 Nov 2026): the distilled 0.6b
+# student continued from its 3B-token checkpoint for 1.0B more tokens on the
+# Apollo pool plus a 0.3B-token slice of Cosmopedia v2 (synthetic textbooks,
+# WikiHow and stories), about 20% of each batch. Control: the same continuation
+# without Cosmopedia (pilot_0.6b_apollo_e4_kd). Same schedule as the 3B
+# continuation, decay over the last 9155 steps.
+seed: 42
+model_size: 0.6b
+resume: /projects/u6wc/savants/runs/pilot_0.6b_medical_apollo_kd_shuffled_3b/step_0091551.pt
+data:
+  - dir: /projects/u6wc/savants/data/packed/medical_apollo
+    logit_dir: /projects/u6wc/savants/data/logits/medical_apollo
+    shards: 30
+  - dir: /projects/u6wc/savants/data/packed/medical_apollo_qa_clean
+    logit_dir: /projects/u6wc/savants/data/logits/medical_apollo_qa_clean
+  - dir: /projects/u6wc/savants/data/packed/cosmopedia
+    logit_dir: /projects/u6wc/savants/data/logits/cosmopedia
+output_dir: /projects/u6wc/savants/runs/pilot_0.6b_cosmo_mix_kd
+training:
+  shuffle: true
+  reset_cursor: true
+  steps: 122068
+  warmup_steps: 300
+  rewarmup_from_step: 91551
+  rewarmup_steps: 500
+  decay_start_step: 112913
+  learning_rate: 6.0e-4
+  lr_floor: 0.1
+  batch_sequences: 8
+  grad_accumulation_steps: 1
+  kd_ratio: 1.0
+  temperature: 1.0
+  logit_chunk: 1024
+  log_every: 20
+  save_every: 5000

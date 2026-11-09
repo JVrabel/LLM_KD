@@ -1,0 +1,29 @@
+# Control for pilot_0.6b_cosmo_mix_kd: the same 1.0B-token continuation of
+# the 3B-token distilled checkpoint on the Apollo pool alone (its fourth pass,
+# the cursor continues into the next permutation), same schedule.
+seed: 42
+model_size: 0.6b
+resume: /projects/u6wc/savants/runs/pilot_0.6b_medical_apollo_kd_shuffled_3b/step_0091551.pt
+data:
+  - dir: /projects/u6wc/savants/data/packed/medical_apollo
+    logit_dir: /projects/u6wc/savants/data/logits/medical_apollo
+    shards: 30
+  - dir: /projects/u6wc/savants/data/packed/medical_apollo_qa_clean
+    logit_dir: /projects/u6wc/savants/data/logits/medical_apollo_qa_clean
+output_dir: /projects/u6wc/savants/runs/pilot_0.6b_apollo_e4_kd
+training:
+  shuffle: true
+  steps: 122068
+  warmup_steps: 300
+  rewarmup_from_step: 91551
+  rewarmup_steps: 500
+  decay_start_step: 112913
+  learning_rate: 6.0e-4
+  lr_floor: 0.1
+  batch_sequences: 8
+  grad_accumulation_steps: 1
+  kd_ratio: 1.0
+  temperature: 1.0
+  logit_chunk: 1024
+  log_every: 20
+  save_every: 5000

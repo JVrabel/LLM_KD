@@ -67,6 +67,8 @@ def main():
     parser.add_argument("--model", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--max-shards", type=int, default=0, help="0 means every shard")
+    parser.add_argument("--shard-numbers", default="",
+                        help="comma-separated shard numbers to score instead of 0..n-1")
     parser.add_argument("--batch-sequences", type=int, default=16)
     args = parser.parse_args()
     os.makedirs(args.out, exist_ok=True)
@@ -77,6 +79,12 @@ def main():
     n_shards = len(meta["shards"])
     if args.max_shards:
         n_shards = min(n_shards, args.max_shards)
+    numbers = list(range(n_shards))
+    if args.shard_numbers:
+        numbers = [int(x) for x in args.shard_numbers.split(",") if x.strip()]
+        bad = [n for n in numbers if n >= len(meta["shards"])]
+        if bad:
+            raise SystemExit(f"shard numbers out of range: {bad}")
 
     llm = LLM(
         model=args.model,
@@ -91,7 +99,7 @@ def main():
     )
     scoring = SamplingParams(temperature=0, max_tokens=1, prompt_logprobs=TOPK)
 
-    for number in range(n_shards):
+    for number in numbers:
         ids_path = os.path.join(args.out, f"shard-{number:05d}.ids.npy")
         lp_path = os.path.join(args.out, f"shard-{number:05d}.lp.npy")
         done_path = os.path.join(args.out, f"shard-{number:05d}.done")
@@ -144,7 +152,7 @@ def main():
         out_ids.flush()
         out_lp.flush()
         open(done_path, "w").close()
-    print("DONE", json.dumps({"shards": n_shards, "topk": TOPK}), flush=True)
+    print("DONE", json.dumps({"shards": numbers, "topk": TOPK}), flush=True)
 
 
 if __name__ == "__main__":

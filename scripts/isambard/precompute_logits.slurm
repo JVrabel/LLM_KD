@@ -48,6 +48,8 @@ fi
 
 ARGS=()
 if [[ -n "${MAX_SHARDS:-}" ]]; then ARGS+=(--max-shards "$MAX_SHARDS"); fi
+# SHARD_NUMBERS="33,36,39" scores only those shards (parallel chains over one pack).
+if [[ -n "${SHARD_NUMBERS:-}" ]]; then ARGS+=(--shard-numbers "$SHARD_NUMBERS"); fi
 python "$SAVANTS/scripts/precompute_logits.py" \
     --shards "${SHARDS:-$SAVANTS/data/packed/python}" \
     --model "$SAVANTS/models/Qwen3.5-35B-A3B-Base" \
