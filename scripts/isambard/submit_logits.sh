@@ -6,8 +6,10 @@
 # /projects/u6wc/savants:
 #   PACK=data/packed/medical LOGIT_DIR=data/logits/medical \
 #   SHARDS="33,36,...,286" CHAINS=4 JOBS=4 bash scripts/submit_logits.sh
-# One shard (8192 x 4096 tokens) takes about 3.4 h at 2.8k tok/s, so a 24 h job
-# scores about 7 shards.
+# One shard (8192 x 4096 tokens) takes about 3.1 h at 3.0k tok/s, so a 24 h job
+# scores about 7 shards. The list reaches the job colon-separated: sbatch
+# --export splits its value on commas (10 Nov 2026: the first submission scored
+# one shard per chain because of that).
 set -euo pipefail
 : "${PACK:?}" "${LOGIT_DIR:?}" "${SHARDS:?}" "${CHAINS:?}" "${JOBS:?}"
 S=/projects/u6wc/savants
@@ -22,7 +24,7 @@ for c in $(seq 0 $((CHAINS - 1))); do
     for i in "${!all[@]}"; do
         if (( i % CHAINS == c )); then mine+=("${all[$i]}"); fi
     done
-    list=$(IFS=','; echo "${mine[*]}")
+    list=$(IFS=':'; echo "${mine[*]}")
     echo "chain $c shards: $list"
     prev=""
     for j in $(seq 1 "$JOBS"); do

@@ -570,3 +570,15 @@ Still to submit when their logits are done: the 6B PubMed continuations (item 3
 above; gate on the four last logit jobs or on the 90 `.done` files) and the
 Cosmopedia mix runs (item 4; gate on 8248078). Watch for: first logit job
 failing on `--shard-numbers` or vLLM startup; NTP chain needs 4 jobs.
+
+10 Nov 2026 11:00 UTC: the first logit submission scored ONE shard per chain
+(33, 36, 39, 42 and Cosmopedia 0) and every chain job then exited: sbatch
+`--export` splits its value on commas, so `SHARD_NUMBERS=33,44,...` arrived
+as `33`. Fixed: `submit_logits.sh` passes the list colon-separated and
+`precompute_logits.slurm` converts it back (and prints it). Cost of the
+mistake ~26 GPU-h and ~10 h of wall clock. Resubmitted the full lists (done
+shards are skipped) as 6 chains × 3 jobs for PubMed and 1 × 2 for Cosmopedia;
+job IDs in the submit output below / `logs/logits_*_last_jobs.txt`. Lesson:
+never put a comma inside an `--export` value.
+NTP chain 8247972 at step 40.9k (fine); controls 8248079 (0.6B, step 109k)
+and 8248083 (1.7B, step 102k) running.
