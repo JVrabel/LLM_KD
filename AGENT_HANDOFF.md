@@ -582,3 +582,8 @@ job IDs in the submit output below / `logs/logits_*_last_jobs.txt`. Lesson:
 never put a comma inside an `--export` value.
 NTP chain 8247972 at step 40.9k (fine); controls 8248079 (0.6B, step 109k)
 and 8248083 (1.7B, step 102k) running.
+Resubmitted 10 Nov 11:05 UTC: PubMed chains c0 8262516→8262517→8262518,
+c1 8262519→…→8262521, c2 8262522→…→8262524, c3 8262525→…→8262527,
+c4 8262528→…→8262530, c5 8262531→…→8262533 (15 shards each, ~46 h per chain);
+Cosmopedia 8262534 → 8262535. Expect all 90 PubMed `.done` files by ~12 Nov
+12:00 UTC, then submit the 6B continuations (item 3 of the 9 Nov list).
