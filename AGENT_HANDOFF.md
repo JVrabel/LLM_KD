@@ -596,3 +596,12 @@ done: MMLU 33.8 / 34.8, MedQA 30.0 / 29.1, shard 31 = 2.511 (3B: 33.9 / 35.3,
 2 (8247975) at step 59.4k. PubMed logits 43/90 done, Cosmopedia 7/9; chain
 first jobs hit 24 h and continue in job 2 (mid-shard resume). Expect PubMed
 logits complete ~12 Nov 08:00 UTC.
+
+11 Nov 2026 16:30 UTC: 1.7B control (Apollo 4th pass, 4B tokens) done: MMLU
+32.4 / 36.5, MedQA 30.9 / 35.1, shard 31 = 2.385 (3B: 33.1 / 36.7, 32.0 /
+32.5, 2.404). Exams flat on repeated data at both sizes; loss on the fit.
+Cosmopedia logits complete (9/9); submitted the mix runs: 0.6B 8315370 →
+8315371, exam 8315372, sweep 8315373; 1.7B 8315375 → 8315376 → 8315377, exam
+8315378, sweep 8315379 (`logs/cosmo_mix_SIZE_*.log`). PubMed logits 55/90,
+all six chains on job 2; NTP at step 65k (runs ~24 steps/min without the
+teacher reads, so three jobs suffice).
