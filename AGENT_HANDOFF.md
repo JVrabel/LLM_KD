@@ -587,3 +587,12 @@ c1 8262519→…→8262521, c2 8262522→…→8262524, c3 8262525→…→82625
 c4 8262528→…→8262530, c5 8262531→…→8262533 (15 shards each, ~46 h per chain);
 Cosmopedia 8262534 → 8262535. Expect all 90 PubMed `.done` files by ~12 Nov
 12:00 UTC, then submit the 6B continuations (item 3 of the 9 Nov list).
+
+11 Nov 2026 10:00 UTC: 0.6B control (Apollo 4th pass, 4B tokens, 8248079/80)
+done: MMLU 33.8 / 34.8, MedQA 30.0 / 29.1, shard 31 = 2.511 (3B: 33.9 / 35.3,
+30.3 / 31.9, 2.535). Loss still falls on the fit, exams flat on repeated data.
+`logs/apollo_e4_0.6b_step122068_mmlu.json`, `logs/diag/forget_pilot_0.6b_apollo_e4_kd_medical_apollo.json`.
+1.7B control on job 2 (8248084) at step 119k, finishes today. NTP chain on job
+2 (8247975) at step 59.4k. PubMed logits 43/90 done, Cosmopedia 7/9; chain
+first jobs hit 24 h and continue in job 2 (mid-shard resume). Expect PubMed
+logits complete ~12 Nov 08:00 UTC.
