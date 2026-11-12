@@ -605,3 +605,17 @@ Cosmopedia logits complete (9/9); submitted the mix runs: 0.6B 8315370 →
 8315378, sweep 8315379 (`logs/cosmo_mix_SIZE_*.log`). PubMed logits 55/90,
 all six chains on job 2; NTP at step 65k (runs ~24 steps/min without the
 teacher reads, so three jobs suffice).
+
+12 Nov 2026 08:15 UTC: PubMed logits 84/90 (remaining shards finish ~14:30
+UTC on chains c2–c5; c0/c1 done). Submitted the 6B continuations gated
+afterok on the last logit jobs (8262524:8262527:8262530:8262533):
+- 0.6B: 8337299 → 8337300 → 8337301 → 8337302; exams 8337303/04/05 (steps
+  120000/150000/183102); sweeps 8337306 (Apollo shards) and 8337307 (PubMed
+  shards 35 100 200 285). Logs `logs/pubmed_kd_0.6b_6b_*.log`.
+- 1.7B: 8337308 → … → 8337313 (six jobs); exams 8337314/15/16; sweeps
+  8337317 (Apollo), 8337318 (PubMed). Logs `logs/pubmed_kd_1.7b_6b_*.log`.
+  Expected finish ~18 Nov.
+NTP 1.7B on job 3 (8247977) at step 77.9k, finishes today; Cosmopedia mix
+0.6B (8315370) at 116k/122k, 1.7B (8315375) at 105k/122k. If a logit chain
+fails, the gate turns into DependencyNeverSatisfied: fix, rerun the chain,
+resubmit with the same commands and a new AFTER.
