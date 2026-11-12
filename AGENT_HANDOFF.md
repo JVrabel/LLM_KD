@@ -619,3 +619,13 @@ NTP 1.7B on job 3 (8247977) at step 77.9k, finishes today; Cosmopedia mix
 0.6B (8315370) at 116k/122k, 1.7B (8315375) at 105k/122k. If a logit chain
 fails, the gate turns into DependencyNeverSatisfied: fix, rerun the chain,
 resubmit with the same commands and a new AFTER.
+
+12 Nov 2026 15:30 UTC: all 90 PubMed logit shards done (chains finished
+cleanly, ~600 GPU-h). The 6B continuations started 14:40 UTC: both loaded
+"767559 sequences in 95 shards" (90 PubMed + 5 QA, 3.14B tokens) with the
+cursor reset; 0.6B 8337299 at step 92.4k, 1.7B 8337308 at 92.0k.
+0.6B Cosmopedia mix (8315370/71) done: MMLU 33.0 / 33.3, MedQA 30.1 / 29.9,
+shard 31 = 2.528, vs control 33.8 / 34.8, 30.0 / 29.1, 2.511: no gain from
+0.3B general tokens at 0.6B (within noise, slightly worse). 1.7B mix
+(8315375) at step ~120k, exam tomorrow morning. NTP at step 84.4k, in its
+decay phase, finishes tonight.
