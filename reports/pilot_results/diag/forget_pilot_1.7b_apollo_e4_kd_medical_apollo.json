@@ -1,0 +1,19 @@
+{
+  "run_dir": "/projects/u6wc/savants/runs/pilot_1.7b_apollo_e4_kd",
+  "packed": "/projects/u6wc/savants/data/packed/medical_apollo",
+  "row0": 4000,
+  "rows": 48,
+  "loss": {
+    "122068": {
+      "0": 2.0383,
+      "4": 2.0356,
+      "8": 1.6094,
+      "12": 1.8982,
+      "16": 1.892,
+      "20": 2.1468,
+      "24": 2.0595,
+      "28": 2.0765,
+      "31": 2.3853
+    }
+  }
+}

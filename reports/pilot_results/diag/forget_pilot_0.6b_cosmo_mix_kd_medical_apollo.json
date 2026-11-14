@@ -1,0 +1,19 @@
+{
+  "run_dir": "/projects/u6wc/savants/runs/pilot_0.6b_cosmo_mix_kd",
+  "packed": "/projects/u6wc/savants/data/packed/medical_apollo",
+  "row0": 4000,
+  "rows": 48,
+  "loss": {
+    "122068": {
+      "0": 2.1718,
+      "4": 2.1831,
+      "8": 1.7366,
+      "12": 2.0225,
+      "16": 2.016,
+      "20": 2.2993,
+      "24": 2.2072,
+      "28": 2.2358,
+      "31": 2.5283
+    }
+  }
+}

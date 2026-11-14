@@ -629,3 +629,16 @@ shard 31 = 2.528, vs control 33.8 / 34.8, 30.0 / 29.1, 2.511: no gain from
 0.3B general tokens at 0.6B (within noise, slightly worse). 1.7B mix
 (8315375) at step ~120k, exam tomorrow morning. NTP at step 84.4k, in its
 decay phase, finishes tonight.
+
+14 Nov 2026 21:30 UTC: results copied to `reports/pilot_results/`.
+- NTP 1.7B at 3B tokens (8247977 chain): shard 31 = 2.708 (1B: 2.862; KD at
+  3B: 2.404, gap 0.30 unchanged from 1B); MMLU 33.2 / 33.9, MedQA 30.2 / 30.6
+  (1B: 31.6 / 31.0, 29.4 / 31.0; KD 3B: 33.1 / 36.7, 32.0 / 32.5). Mid-run
+  step 60000: 31.3 / 30.9, 28.3 / 29.8, loss 2.980.
+- 1.7B Cosmopedia mix at 4B (8315375/76): MMLU 32.6 / 37.5, MedQA 30.5 / 34.0,
+  shard 31 = 2.396 vs control 32.4 / 36.5, 30.9 / 35.1, 2.385. Within noise at
+  both sizes; 20% general tokens cost only 0.01 nats on the medical held-out.
+- 6B runs: 0.6B (8337301, job 3) at step 170k, in the decay phase, finishes
+  ~15 Nov 06:00 UTC; 1.7B (8337310, job 3) at step 136k, finishes ~17 Nov.
+Remaining queue: 6B chains and their evals only. Spent so far on the 9 Nov
+plan ≈ 70 (NTP) + 630 (logits) + 110 (controls) + 110 (mix) + 6B so far.

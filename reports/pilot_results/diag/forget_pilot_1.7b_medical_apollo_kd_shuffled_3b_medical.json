@@ -1,0 +1,14 @@
+{
+  "run_dir": "/projects/u6wc/savants/runs/pilot_1.7b_medical_apollo_kd_shuffled_3b",
+  "packed": "/projects/u6wc/savants/data/packed/medical",
+  "row0": 4000,
+  "rows": 48,
+  "loss": {
+    "91551": {
+      "35": 1.9298,
+      "100": 2.328,
+      "200": 2.2386,
+      "285": 2.1571
+    }
+  }
+}
