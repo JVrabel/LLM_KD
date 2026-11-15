@@ -642,3 +642,32 @@ decay phase, finishes tonight.
   ~15 Nov 06:00 UTC; 1.7B (8337310, job 3) at step 136k, finishes ~17 Nov.
 Remaining queue: 6B chains and their evals only. Spent so far on the 9 Nov
 plan ≈ 70 (NTP) + 630 (logits) + 110 (controls) + 110 (mix) + 6B so far.
+
+15 Nov 2026 12:45 UTC: 0.6B 6B PubMed continuation finished (8337301 done
+05:50 UTC, exams 8337303/04/05 and sweeps 8337306/07 done). Results in
+`reports/pilot_results/pubmed_kd_0.6b_6b_step*_mmlu.json` and
+`reports/pilot_results/diag/forget_pilot_0.6b_medical_pubmed_kd_6b_*.json`.
+Final checkpoint step 183102 (post-decay, comparable to the 3B run's 91551):
+
+| 0.6B KD              | 3B Apollo | 4B Apollo (pass 4) | 6B = 3B Apollo + 3B PubMed |
+|----------------------|-----------|--------------------|----------------------------|
+| MMLU-med 0 / 3-shot  | 33.9/35.3 | 33.8/34.8          | 31.4/31.1                  |
+| MedQA 0 / 3-shot     | 30.3/31.9 | 30.0/29.1          | 28.9/28.4                  |
+| Apollo shard 31 loss | 2.535     | 2.511              | 2.710                      |
+| PubMed 35/100/200/285| 2.03/2.44/2.35/2.28 | –        | 1.90/2.23/2.10/1.91        |
+
+Reading: 3B tokens of PubMed abstracts improve the PubMed held-out by
+0.13–0.37 nats but raise the Apollo held-out by 0.18 nats and lower the exams
+by 2–4 points (MMLU 3-shot 35.3 → 31.1, beyond the ~1.5-pt SE). So the 6B
+point is NOT on the Apollo scaling curve: it is a domain-shift/forgetting
+result, not a token-count one. Exam-relevant knowledge evidently came from
+the Apollo-style text (textbooks, guidelines, QA), not from abstracts, which
+is consistent with Allen-Zhu & Li (single-exposure knowledge is not
+extractable). Mid-run checkpoints 120000/150000 (constant lr) have Apollo
+shard 31 at 2.94 vs 2.75 at the same phase of the 3B run, same +0.19 drift.
+Open question for the 1.7B twin (8337310, step 149.5k, job 3 of 6, finishes
+~17 Nov 05:00 UTC): does the larger model forget less? If not, the honest
+summary for Jakub is that more tokens from a different medical sub-domain do
+not help the exams and the Apollo-only curve cannot be extended this way.
+Budget on the 9 Nov plan so far ≈ 70 (NTP) + 630 (logits) + 110 (controls)
++ 110 (mix) + 126 (0.6B 6B) + ~210 (1.7B 6B, 2 GPUs × 104 h) ≈ 1,250 GPU-h.
