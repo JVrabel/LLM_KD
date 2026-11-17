@@ -671,3 +671,28 @@ summary for Jakub is that more tokens from a different medical sub-domain do
 not help the exams and the Apollo-only curve cannot be extended this way.
 Budget on the 9 Nov plan so far ≈ 70 (NTP) + 630 (logits) + 110 (controls)
 + 110 (mix) + 126 (0.6B 6B) + ~210 (1.7B 6B, 2 GPUs × 104 h) ≈ 1,250 GPU-h.
+
+17 Nov 2026 13:00 UTC: 1.7B 6B PubMed continuation finished (8337312 done
+05:25 UTC; exams 8337314/15/16 and sweeps 8337317/18 done 05:31). Results in
+`reports/pilot_results/pubmed_kd_1.7b_6b_step*_mmlu.json` and
+`reports/pilot_results/diag/forget_pilot_1.7b_medical_pubmed_kd_6b_*.json`.
+Queue is empty; the 9 Nov plan is complete (~1,250 GPU-h).
+
+| 1.7B KD              | 3B Apollo | 4B Apollo (pass 4) | 6B = 3B Apollo + 3B PubMed |
+|----------------------|-----------|--------------------|----------------------------|
+| MMLU-med 0 / 3-shot  | 33.1/36.7 | 32.4/36.5          | 33.1/32.3                  |
+| MedQA 0 / 3-shot     | 32.0/32.5 | 30.9/35.1          | 31.5/30.6                  |
+| Apollo shard 31 loss | 2.404     | 2.385              | 2.562                      |
+| PubMed 35/100/200/285| 1.93/2.33/2.24/2.16 | –        | 1.82/2.14/2.02/1.82        |
+
+Same picture as the 0.6B: PubMed held-out improves 0.11–0.33 nats, Apollo
+held-out worsens by 0.16 (0.6B: 0.18), exams do not gain. The 1.7B keeps its
+0-shot scores but loses 4.4 on 3-shot MMLU and 1.9 on 3-shot MedQA; the 0.6B
+lost on everything. Trained-on Apollo shards (0–28) drift by 0.5–0.6 nats at
+constant lr (step 120k/150k) and end 0.3–0.4 above the control's values after
+decay, i.e. the model partly forgets the Apollo text it saw in the first 3B.
+Conclusion for Jakub: a second 3B tokens from a different medical sub-domain
+(abstracts) does not extend the Apollo scaling curve and does not help the
+exams at either size; data style (textbook/guideline/QA vs abstract) matters
+more than token count here. Nothing queued. Remaining budget ≈ 250–750 GPU-h
+but only 7 days to 24 Nov; any new run must be short (< 24 h) and approved.
