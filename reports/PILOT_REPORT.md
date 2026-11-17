@@ -186,3 +186,83 @@ evaluating every 0.5B tokens. Cost 113 GPU-hours.
   teacher is at 88.6, so the "within 2x of the teacher" mark (44) needs
   tens of billions of tokens of this corpus, or data with denser knowledge
   per token.
+
+## 9. Update, 17 November: the remaining-budget plan (NTP to 3B, data mix, 6B tokens)
+
+Jakub approved up to 1,500 to 2,000 GPU-hours in two branches: pure scaling
+and general-knowledge / synthetic data, with next-token kept only as a
+robustness check. Four experiments ran between 10 and 17 November, about
+1,250 GPU-hours in total, 630 of them teacher logits for 3B new tokens.
+All students are annealed finals; standard error on the exams is about
+1.5 points.
+
+**(a) Next-token 1.7B continued to 3B tokens** (Jakub's robustness check).
+
+| 1.7B at 3B tokens | next-token | distilled |
+|---|---|---|
+| held-out loss, unseen shard 31 | 2.708 | 2.404 |
+| MMLU medical 0 / 3-shot | 33.2 / 33.9 | 33.1 / 36.7 |
+| MedQA 0 / 3-shot | 30.2 / 30.6 | 32.0 / 32.5 |
+
+The loss gap to distillation is 0.30 nats, the same as at 1B and at every
+intermediate checkpoint (0.29 to 0.36 nats over a 20-fold token range).
+Next-token exams rise with tokens too but stay 2 to 3 points behind on the
+3-shot scores. Next-token never catches up within the measured range.
+
+**(b) Apollo-only control, fourth pass (4B tokens)** against **(c) a 20%
+Cosmopedia v2 general-text mix** (0.3B general tokens, same total).
+
+| 4B tokens, distilled | 0.6B control | 0.6B mix | 1.7B control | 1.7B mix |
+|---|---|---|---|---|
+| MMLU medical 0 / 3-shot | 33.8 / 34.8 | 33.0 / 33.3 | 32.4 / 36.5 | 32.6 / 37.5 |
+| MedQA 0 / 3-shot | 30.0 / 29.1 | 30.1 / 29.9 | 30.9 / 35.1 | 30.5 / 34.0 |
+| held-out loss, shard 31 | 2.511 | 2.528 | 2.385 | 2.396 |
+
+A fourth pass over the same Apollo text no longer moves the exams (the 3B to
+4B change is within noise at both sizes), so the exam slope of section 8 is
+a slope in new tokens, not in passes. General text is nearly free, costing
+0.01 nats on the medical held-out, but 0.3B tokens of it do not help the
+medical exams at either size.
+
+**(d) Pure scaling: 3B Apollo + 3B PubMed abstracts = 6B tokens**, both
+sizes continued from their 3B checkpoints onto 90 evenly spaced PubMed
+shards (3.1B tokens, 2002 to 2024, duplicates of Apollo removed), fresh
+data cursor, same schedule.
+
+| distilled | 0.6B at 3B | 0.6B at 6B | 1.7B at 3B | 1.7B at 6B |
+|---|---|---|---|---|
+| MMLU medical 0 / 3-shot | 33.9 / 35.3 | 31.4 / 31.1 | 33.1 / 36.7 | 33.1 / 32.3 |
+| MedQA 0 / 3-shot | 30.3 / 31.9 | 28.9 / 28.4 | 32.0 / 32.5 | 31.5 / 30.6 |
+| held-out Apollo loss, shard 31 | 2.535 | 2.710 | 2.404 | 2.562 |
+| held-out PubMed loss, 4 shards (mean) | 2.27 | 2.03 | 2.16 | 1.95 |
+
+The second 3B tokens did what tokens do on their own distribution: PubMed
+held-out loss fell by 0.11 to 0.37 nats at both sizes. But the Apollo
+held-out loss rose by 0.16 to 0.18 nats, the trained-on Apollo shards
+drifted up by 0.3 to 0.4 nats after annealing, and the exams did not gain:
+the 0.6B lost 2 to 4 points everywhere, the 1.7B kept its 0-shot scores and
+lost 4.4 on 3-shot MMLU. Both drops exceed the standard error. The 6B point
+therefore does not lie on the scaling curve of section 6, which assumes
+more tokens from the same distribution. It is a domain-shift result: the
+exam-relevant knowledge came from the Apollo textbook, guideline and QA
+text, not from abstracts, and the students partly forgot it. This matches
+Allen-Zhu and Li's finding that knowledge seen once, in one phrasing, is
+stored but not extractable.
+
+**What the plan established.**
+
+- Distillation beats next-token by a constant 0.3 nats on held-out loss and
+  2 to 3 exam points, robustly across 0.16B to 3B tokens. The next-token
+  branch can be closed.
+- Within one distribution, the exams follow the token count: +3 MMLU points
+  per tripling of new Apollo-style tokens, and nothing from a fourth pass
+  or from general text.
+- Across distributions, token count is not the variable. 3B tokens of
+  abstracts bought nothing on the exams and cost on the Apollo held-out.
+  The scaling curve of section 6 extrapolates only to more text of the
+  same kind, and the Apollo corpus is exhausted at about 1B tokens.
+- The way forward for the "savant" goal is therefore denser, exam-style
+  knowledge per token (teacher-written rewrites and QA of the medical
+  corpus, with logits captured at generation time), not more raw medical
+  text. That branch was not run; it needs roughly 200 GPU-hours per 1B
+  generated tokens for logits plus the generation itself.
