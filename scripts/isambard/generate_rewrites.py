@@ -21,18 +21,21 @@ from vllm import LLM, SamplingParams
 
 STYLES = {
     "textbook": (
-        "a rewrite of the excerpt as a section of a medical textbook that defines the key "
-        "terms, explains the mechanisms and states every clinical fact explicitly",
+        "a rewrite of the excerpt as a self-contained section of a medical textbook that "
+        "defines the key terms, explains the mechanisms and states every clinical fact "
+        "explicitly, without referring to the excerpt",
         "Textbook section",
     ),
     "questions": (
-        "five exam-style multiple-choice questions based on the excerpt, each with four "
-        "options (A-D), the correct answer, and a short explanation of why it is correct",
+        "five exam-style multiple-choice questions testing the medical knowledge in the "
+        "excerpt, each with four options (A-D), the correct answer, and a short explanation "
+        "that states the underlying fact itself and never refers to the excerpt or the text",
         "Questions",
     ),
     "notes": (
-        "concise study notes on the excerpt: a numbered list of the facts a medical student "
-        "must remember, each written as a complete, self-contained sentence",
+        "concise study notes: a numbered list of the medical facts from the excerpt that a "
+        "student must remember, each written as a complete, self-contained sentence that "
+        "names its subject and never refers to the excerpt",
         "Study notes",
     ),
 }
