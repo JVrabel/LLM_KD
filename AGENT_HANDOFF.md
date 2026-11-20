@@ -696,3 +696,40 @@ Conclusion for Jakub: a second 3B tokens from a different medical sub-domain
 exams at either size; data style (textbook/guideline/QA vs abstract) matters
 more than token count here. Nothing queued. Remaining budget ≈ 250–750 GPU-h
 but only 7 days to 24 Nov; any new run must be short (< 24 h) and approved.
+
+## 20 Nov 2026: last-week experiments (Jakub 18 Nov: ~1,000 GPU-h, done by 23 Nov)
+
+Marek approved ("alright go ahead", 20 Nov 12:00 UTC). Two experiments, ~600
+GPU-h, everything must finish by 22 Nov evening; the cluster closes 24 Nov.
+
+**(1) PubMed replay mix** (forgetting test): `config/pilot_{0.6b,1.7b}_pubmed_replay_kd.yaml`,
+3B checkpoint + 1.5B tokens of 40% Apollo (30 shards) / 60% PubMed (45 of the
+90 shards) + QA, reset cursor, decay from 123594, final step 137327. Existing
+logits. 0.6B 8654430→8654431, exam 8654432, sweeps 8654433/34; 1.7B
+8654435→36→37, exam 8654438, sweeps 8654439/40. Logs `logs/pubmed_replay_*`.
+Finish: 0.6B ~21 Nov 17:00 UTC, 1.7B ~22 Nov 16:00 UTC.
+
+**(2) Teacher-written rewrites** (denser knowledge): `scripts/generate_rewrites.py`
+turns Apollo documents into a textbook section, five MCQs with explanations and
+study notes (plain template on the base teacher, temperature 0.7, 7k tok/s per
+2-GPU instance; smoke 8654318 on 400 docs: 1,184 rewrites, 0.68M tokens).
+- Generation 8654441–8654450: 10 instances × 70,000 corpus lines (starts
+  0, 200k, …, 1.8M) → `data/raw/rewrites/part00..09.jsonl`, ~1.2B tokens, ~5 h.
+- Pack 8654451 (afterok all ten): `data/packed/rewrites`, shuffle seed 11,
+  MAX_SHARDS=30 (1.0B tokens).
+- Logits 8654452–8654481 (afterok pack): 30 chains × 1 shard →
+  `data/logits/rewrites`, ~3.1 h. `submit_logits.sh` now takes AFTER.
+- Training (afterok all 30 logit jobs), configs `config/pilot_*_rewrites_kd_{05b,1b}.yaml`,
+  3B checkpoint + rewrites (15 or 30 shards) + QA, reset cursor:
+  0.6B 0.5B 8654482 (exam 8654483, sweeps 84/85, final step 106810);
+  1.7B 0.5B 8654486 (87, 88/89); 0.6B 1B 8654490 (91, 92/93, step 122068);
+  1.7B 1B 8654494→8654495 (96, 97/98). Expected: 0.5B runs done 21 Nov
+  morning/afternoon, 1B 0.6B 21 Nov evening, 1B 1.7B ~22 Nov 08:00 UTC.
+Controls: the 3B checkpoints and `pilot_*_apollo_e4_kd` (1B more Apollo
+tokens, no exam gain). Read: exams in `logs/rewrites_*_mmlu.json`, sweeps in
+`logs/diag/forget_pilot_*_rewrites_kd_*`. If any gate fails
+(DependencyNeverSatisfied), fix and resubmit the downstream commands above
+with a new AFTER. Remaining budget after this ≈ 150–650 GPU-h; do not start
+anything else. 23 Nov: back up logs/ and model-only weights of the final
+checkpoints (see 20 Nov status: runs 7.1 TB, logits 2.1 TB will be deleted).
+Two-page summary for Jakub (grant pitch): https://claude.ai/artifact/9TeuFhik5AWSSih447WMLS

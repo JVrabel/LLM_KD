@@ -6,6 +6,7 @@
 # /projects/u6wc/savants:
 #   PACK=data/packed/medical LOGIT_DIR=data/logits/medical \
 #   SHARDS="33,36,...,286" CHAINS=4 JOBS=4 bash scripts/submit_logits.sh
+# AFTER=<jobid> gates the first job of every chain with afterok (e.g. a pack job).
 # One shard (8192 x 4096 tokens) takes about 3.1 h at 3.0k tok/s, so a 24 h job
 # scores about 7 shards. The list reaches the job colon-separated: sbatch
 # --export splits its value on commas (10 Nov 2026: the first submission scored
@@ -29,7 +30,8 @@ for c in $(seq 0 $((CHAINS - 1))); do
     prev=""
     for j in $(seq 1 "$JOBS"); do
         dep=()
-        if [[ -n "$prev" ]]; then dep=(--dependency="afterany:$prev"); fi
+        if [[ -n "$prev" ]]; then dep=(--dependency="afterany:$prev");
+        elif [[ -n "${AFTER:-}" ]]; then dep=(--dependency="afterok:$AFTER"); fi
         jid=$(sbatch --parsable --job-name="${NAME}_c${c}" "${dep[@]}" \
             --output="$S/logs/${NAME}_c${c}_%j.log" \
             --export=ALL,SHARDS="$PACK",LOGIT_DIR="$LOGIT_DIR",SHARD_NUMBERS="$list" \
