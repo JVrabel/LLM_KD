@@ -40,7 +40,16 @@ mkdir -p "$(dirname "$SAVANTS/$OUT")"
 ARGS=()
 if [[ -n "${STYLES:-}" ]]; then ARGS+=(--styles "${STYLES//:/,}"); fi
 if [[ -n "${MAX_NEW:-}" ]]; then ARGS+=(--max-new "$MAX_NEW"); fi
-python "$SAVANTS/scripts/generate_rewrites.py" \
-    --corpus "$SAVANTS/data/raw/apollo/merged_apollo_en_corpus.jsonl" \
-    --model "$SAVANTS/models/Qwen3.5-35B-A3B-Base" \
-    --out "$SAVANTS/$OUT" --start "$START" --count "$COUNT" --seed "$START" "${ARGS[@]}"
+# The script resumes from its output file, so a crashed engine (vLLM worker
+# hangs, 20 Nov 2026) just costs the batch in flight: retry a few times.
+for attempt in 1 2 3 4 5; do
+    echo "attempt $attempt $(date -u +%FT%TZ)"
+    if python "$SAVANTS/scripts/generate_rewrites.py" \
+        --corpus "$SAVANTS/data/raw/apollo/merged_apollo_en_corpus.jsonl" \
+        --model "$SAVANTS/models/Qwen3.5-35B-A3B-Base" \
+        --out "$SAVANTS/$OUT" --start "$START" --count "$COUNT" --seed "$((START + attempt))" "${ARGS[@]}"; then
+        exit 0
+    fi
+    echo "attempt $attempt failed"; sleep 30
+done
+exit 1

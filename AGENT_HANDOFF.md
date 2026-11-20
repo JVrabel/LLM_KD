@@ -747,3 +747,16 @@ part*.clean.jsonl first), logits 8654945–8654974, training 0.6B 0.5B 8654975
 8654998 (99, 8655000/01), 1.7B 1B 8655002→8655003 (04, 05/06). Replay mix
 jobs unaffected. If a generation job dies again: resubmit it with --exclude
 of its node, then the pack and everything behind it with the new ids.
+
+20 Nov 2026 13:30 UTC: four more generators died the same way at 10:18–10:20
+(nodes unrelated; each hung on a step for the 300 s worker timeout after
+7–8 batches, exactly 5 min after its last write). The precompute script,
+which has never hung, runs with enforce_eager=True; the generator did not.
+Fix: enforce_eager=True in generate_rewrites.py and a 5-attempt retry loop in
+generate_rewrites.slurm (the script resumes from its output file). Cancelled
+the remaining generators and resubmitted all ten as 8655162–8655171 (14 h
+limit), pack 8655172, logits 8655173–8655203, training 0.6B 0.5B 8655204
+(exam 05, sweeps 06/07), 1.7B 0.5B 8655208 (09, 10/11), 0.6B 1B 8655212 (13,
+14/15), 1.7B 1B 8655216→8655218 (19, 20/21). Generator ids also in
+logs/rewrites_gen_jobs.txt. Eager mode may be slower than the 7.7k tok/s
+measured with cudagraphs; check the "written" lines in logs/rewrites_8655162.log.

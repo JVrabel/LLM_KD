@@ -103,6 +103,7 @@ def main():
         gpu_memory_utilization=0.85,
         language_model_only=True,
         trust_remote_code=True,
+        enforce_eager=True,  # the compiled/cudagraph path hung TP workers after a few batches (20 Nov 2026)
         seed=args.seed,
     )
     tokenizer = llm.get_tokenizer()
