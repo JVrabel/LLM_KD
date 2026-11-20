@@ -15,10 +15,28 @@ export HF_HUB_OFFLINE=1
 cd "$SAVANTS"
 # shellcheck disable=SC1091
 source venv-data/bin/activate
+# Drop malformed lines (a generation job killed mid-write) into clean copies.
+python - <<'PY'
+import glob, json
+for path in sorted(glob.glob("data/raw/rewrites/part*.jsonl")):
+    if path.endswith(".clean.jsonl"):
+        continue
+    kept = bad = 0
+    with open(path) as src, open(path.replace(".jsonl", ".clean.jsonl"), "w") as dst:
+        for line in src:
+            try:
+                row = json.loads(line)
+                if row["text"].strip():
+                    dst.write(line if line.endswith("\n") else line + "\n")
+                    kept += 1
+            except (ValueError, KeyError):
+                bad += 1
+    print(path, "kept", kept, "bad", bad, flush=True)
+PY
 ARGS=()
 if [[ -n "${MAX_SHARDS:-}" ]]; then ARGS+=(--max-shards "$MAX_SHARDS"); fi
 python "$SAVANTS/scripts/pack_shards.py" \
-    --jsonl "$SAVANTS"/data/raw/rewrites/part*.jsonl \
+    --jsonl "$SAVANTS"/data/raw/rewrites/part*.clean.jsonl \
     --tokenizer "$SAVANTS/models/Qwen3.5-35B-A3B-Base" \
     --out "${OUT:-$SAVANTS/data/packed/rewrites}" \
     --shuffle-seed 11 "${ARGS[@]}"

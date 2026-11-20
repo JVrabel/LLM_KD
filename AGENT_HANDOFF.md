@@ -733,3 +733,17 @@ with a new AFTER. Remaining budget after this ≈ 150–650 GPU-h; do not start
 anything else. 23 Nov: back up logs/ and model-only weights of the final
 checkpoints (see 20 Nov status: runs 7.1 TB, logits 2.1 TB will be deleted).
 Two-page summary for Jakub (grant pitch): https://claude.ai/artifact/9TeuFhik5AWSSih447WMLS
+
+20 Nov 2026 12:30 UTC: generation jobs p2/p3/p4 (8654443/44/45, nodes
+nid010042/43/52) died after 7–11 min with vLLM "EngineCore fatal error" in
+the shared-memory broadcast between the two TP workers (RPC sample_tokens
+timed out); the other seven ran on at 7.7k tok/s. The afterok gates then
+cancelled the pack, the 30 logit jobs and the four training chains.
+Resubmitted p2/p3/p4 as 8654939/41/43 with --exclude of those nodes (the
+script resumes from the partial part0N.jsonl), and the whole downstream chain
+anew: pack 8654944 (pack_rewrites.slurm now drops malformed lines into
+part*.clean.jsonl first), logits 8654945–8654974, training 0.6B 0.5B 8654975
+(exam 8654976, sweeps 8654980/81), 1.7B 0.5B 8654982 (83, 84/85), 0.6B 1B
+8654998 (99, 8655000/01), 1.7B 1B 8655002→8655003 (04, 05/06). Replay mix
+jobs unaffected. If a generation job dies again: resubmit it with --exclude
+of its node, then the pack and everything behind it with the new ids.
