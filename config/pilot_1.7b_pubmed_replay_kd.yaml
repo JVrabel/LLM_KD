@@ -1,0 +1,38 @@
+# Replay test (20 Nov 2026): is the 6B PubMed result forgetting or the
+# abstracts themselves? The distilled 1.7b student continued from its
+# 3B-token checkpoint for 1.5B more tokens on a 40/60 mix of the Apollo pool
+# (30 shards, replay) and 45 of the 90 PubMed shards used by the 6B run, plus
+# the clean QA pack. Compare with pilot_1.7b_medical_pubmed_kd_6b (PubMed
+# only) and pilot_1.7b_apollo_e4_kd (Apollo only) on Apollo shard 31, the
+# PubMed held-out shards and the exams. Same schedule as the other
+# continuations: 500-step re-warmup, constant to 70%, cosine to 10%.
+seed: 42
+model_size: 1.7b
+resume: /projects/u6wc/savants/runs/pilot_1.7b_medical_apollo_kd_shuffled_3b/step_0091551.pt
+data:
+  - dir: /projects/u6wc/savants/data/packed/medical_apollo
+    logit_dir: /projects/u6wc/savants/data/logits/medical_apollo
+    shards: 30
+  - dir: /projects/u6wc/savants/data/packed/medical
+    logit_dir: /projects/u6wc/savants/data/logits/medical
+    shards: [33,39,44,50,56,61,67,73,78,84,90,96,101,107,113,118,124,130,135,141,147,152,158,164,169,175,181,187,192,198,204,209,215,221,226,232,238,243,249,255,260,266,272,277,283]
+  - dir: /projects/u6wc/savants/data/packed/medical_apollo_qa_clean
+    logit_dir: /projects/u6wc/savants/data/logits/medical_apollo_qa_clean
+output_dir: /projects/u6wc/savants/runs/pilot_1.7b_pubmed_replay_kd
+training:
+  shuffle: true
+  reset_cursor: true
+  steps: 137327
+  warmup_steps: 300
+  rewarmup_from_step: 91551
+  rewarmup_steps: 500
+  decay_start_step: 123594
+  learning_rate: 6.0e-4
+  lr_floor: 0.1
+  batch_sequences: 8
+  grad_accumulation_steps: 1
+  kd_ratio: 1.0
+  temperature: 1.0
+  logit_chunk: 1024
+  log_every: 20
+  save_every: 5000
