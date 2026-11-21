@@ -760,3 +760,25 @@ limit), pack 8655172, logits 8655173–8655203, training 0.6B 0.5B 8655204
 14/15), 1.7B 1B 8655216→8655218 (19, 20/21). Generator ids also in
 logs/rewrites_gen_jobs.txt. Eager mode may be slower than the 7.7k tok/s
 measured with cudagraphs; check the "written" lines in logs/rewrites_8655162.log.
+
+21 Nov 2026 01:30 UTC: generation finished without a failure (ten jobs,
+4.6–7.4 h each, p0 resumed twice through the retry loop; 1.6M rewrites,
+1.79M documents, ~0.9B new tokens); pack 8655172 completed in 37 min with 30
+shards of 8192 sequences. Logits: eight shards done by 01:00, five running,
+seventeen PENDING with reason `AssocGrpGRESMinutes`: the account's GPU-minute
+limit counts running jobs' *remaining time limit* as reserved, and twenty-two
+24 h jobs reserved more than the remaining allocation. Fix without new jobs:
+`scontrol update JobId=... TimeLimit=04:30:00` on the pending logit jobs (one
+shard takes 3.0–3.2 h) and 05:00:00 on the running ones; all seventeen started
+within a minute. Training jobs tightened likewise (0.6B 0.5B 12 h, 1.7B 0.5B
+20 h, 0.6B 1B 23 h, second 1.7B 1B job 14 h, second 0.6B replay job 8 h, third
+1.7B replay job 8 h; rates 26.1 and 14.6 steps/min confirmed from the replay
+logs). The 0.5B training jobs 8655204/8655208 were re-gated on the logit jobs
+for shards 8–14 only (8655182–8655187) since their configs use 15 shards.
+Group GPU usage counted against the limit (sshare GrpTRESRaw gres/gpu):
+82,306 GPU-min = 1,372 GPU-h at 01:20 UTC; the limit itself is not visible at
+user level. Expected finish: 0.5B rewrites 0.6B ~15:30 UTC 21 Nov, 1.7B
+~22:00; 0.6B 1B ~01:00 22 Nov; 1.7B 1B ~17:30 22 Nov; replay 0.6B ~15:30 21
+Nov, 1.7B ~14:00 22 Nov. Lesson for any future chain: submit short jobs with
+a realistic --time, not the 24 h default, or the GRES-minute reservation
+serialises them.
