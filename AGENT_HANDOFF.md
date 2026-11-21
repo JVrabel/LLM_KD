@@ -782,3 +782,21 @@ user level. Expected finish: 0.5B rewrites 0.6B ~15:30 UTC 21 Nov, 1.7B
 Nov, 1.7B ~14:00 22 Nov. Lesson for any future chain: submit short jobs with
 a realistic --time, not the 24 h default, or the GRES-minute reservation
 serialises them.
+
+21 Nov 2026 09:30 UTC: all 30 rewrite logit shards done by 04:15; rewrites
+0.5B trainings started 04:18 (0.6B) and 06:40 (1.7B), rewrites ce ≈1.6/1.45
+(the teacher-written text is far easier than Apollo, ce ≈2.3). The 1B
+trainings 8655212/8655216 are PENDING with `AssocGrpGRESMinutes` although
+their dependencies are satisfied. Diagnosis: the account's gres/gpu minute
+limit is enforced in "safe" mode (usage + remaining time of running jobs +
+the pending job's full time limit must fit), and its usage counter equals
+the November usage (sshare GrpTRESRaw gres/gpu 90,510 min vs sreport since 1
+Nov 90,282), so it is a monthly or allocation-period cap of about 1,540–1,560
+GPU-h (bracketed: 92,159 min allowed, 93,539 refused). Training, exam and
+sweep jobs request one GPU (`--gpus=1`); exams/sweeps take 2–5 min each.
+Remaining headroom is therefore under about 23 GPU-h: enough for the 0.5B
+evals and the 0.6B replay second job (6.4 h; limit cut to 7 h), not for the
+1.7B replay continuation (29.5 h), nor the 1B rewrites runs (19.6 h and
+34.6 h). Those three stay queued and will start only if BriCS raises the
+limit. The limit value is invisible at user level (sacctmgr/sshare show the
+user row only); ask BriCS support or Jakub (PI) for the account's GrpTRESMins.
