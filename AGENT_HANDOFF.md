@@ -800,3 +800,11 @@ evals and the 0.6B replay second job (6.4 h; limit cut to 7 h), not for the
 34.6 h). Those three stay queued and will start only if BriCS raises the
 limit. The limit value is invisible at user level (sacctmgr/sshare show the
 user row only); ask BriCS support or Jakub (PI) for the account's GrpTRESMins.
+
+21 Nov 2026 10:30 UTC: replay first jobs hit their 24 h limit as designed.
+The 0.6B continuation 8654431 resumed from the step-125,000 checkpoint, so it
+needs 7.9 h, more than the 7 h limit I had set from the live step (users
+cannot raise a running job's limit). Added a 3 h third job 8692042
+(afterany:8654431, RESUME_LATEST=1) and re-gated the exam/sweeps
+8654432–8654434 onto it. The 1.7B continuation 8654436 is blocked by the GRES
+minute cap. Watcher excludes the expected TIMEOUT of 8654431.
