@@ -821,3 +821,15 @@ finished 1.7B rewrites 0.5B checkpoint (runs/pilot_1.7b_rewrites_kd_05b/
 step_0106810.pt) will not start. The 0.6B 1B, 1.7B 1B and 1.7B replay jobs
 remain queued and will run only if BriCS raises the limits. logs/ is being
 rsynced to ~/Projects/LLM_KD_backup/logs on Marek's laptop.
+
+22 Nov 2026 12:15 UTC: model-only bf16 exports of all 13 final checkpoints
+are in /projects/u6wc/savants/backup (43 GB: 0.6B runs 1.9 GB each in two
+parts, 1.7B runs 4.9 GB in four; the "1.7B" student has 2.43B parameters
+with its untied 248k-token embeddings). Made with
+scripts/export_model_weights.py on the login node, which caps a user at
+4 GB of memory (user slice memory.max), hence the part files.
+scripts/student_mmlu.py loads either a training checkpoint or an export
+directory and runs on CUDA, Apple MPS or CPU. Laptop copies go to
+~/Projects/LLM_KD_backup/{logs,models,eval_data,tokenizer}; transfer runs at
+about 10 MB/s. The 0.6B NTP student was never continued to 3B, so there is
+no checkpoint for it beyond the 1B runs.
