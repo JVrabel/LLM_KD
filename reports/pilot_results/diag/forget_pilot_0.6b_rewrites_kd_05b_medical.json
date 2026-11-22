@@ -1,0 +1,14 @@
+{
+  "run_dir": "/projects/u6wc/savants/runs/pilot_0.6b_rewrites_kd_05b",
+  "packed": "/projects/u6wc/savants/data/packed/medical",
+  "row0": 4000,
+  "rows": 48,
+  "loss": {
+    "106810": {
+      "35": 2.1541,
+      "100": 2.5758,
+      "200": 2.4737,
+      "285": 2.3228
+    }
+  }
+}

@@ -266,3 +266,73 @@ stored but not extractable.
   corpus, with logits captured at generation time), not more raw medical
   text. That branch was not run; it needs roughly 200 GPU-hours per 1B
   generated tokens for logits plus the generation itself.
+
+## 10. Update, 22 November: replay mix and teacher-written rewrites (0.6B)
+
+Two follow-ups to section 9 ran in the last week, both continuations of the
+0.6B distilled student from its 3B-token checkpoint, same schedule and
+annealing as before. The matching 1.7B runs were submitted but the account's
+GPU-minute and CPU-minute caps for November were reached on 21 November; the
+1.7B rewrites run finished but could not be examined, and the 1.7B replay
+run and both 1B-token rewrites runs could not start.
+
+**(e) Replay test of the forgetting explanation.** 1.5B new tokens: the 45
+PubMed shards of section 9(d) that the 6B run had not reached, mixed with
+the 30 Apollo training shards (about 40% of each batch is Apollo replay).
+
+| 0.6B distilled | at 3B | 6B PubMed (d) | PubMed + Apollo replay |
+|---|---|---|---|
+| MMLU medical 0 / 3-shot (cloze) | 33.9 / 35.3 | 31.4 / 31.1 | 33.4 / 35.2 |
+| MedQA 0 / 3-shot (cloze) | 30.3 / 31.9 | 28.9 / 28.4 | 29.6 / 29.3 |
+| held-out Apollo loss, shard 31 | 2.535 | 2.710 | 2.528 |
+| held-out PubMed loss, 4 shards (mean) | 2.27 | 2.03 | 2.09 |
+
+Replay removes the damage: the Apollo held-out loss stays at its 3B value
+instead of rising 0.18 nats, and the MMLU scores return to the 3B level.
+The PubMed held-out still improves by 0.18 nats (0.24 without replay). But
+the exams do not gain from the abstracts even when nothing is forgotten,
+so section 9's conclusion stands in its stronger form: the 3B PubMed tokens
+added no exam-relevant knowledge. The MedQA 3-shot score is 2.6 points
+below the 3B value, within two standard errors.
+
+**(f) Teacher-written rewrites, 0.5B tokens.** The teacher (Qwen3.5-35B-A3B
+base, greedy-free sampling at temperature 0.7) rewrote 1.79M Apollo
+documents in three styles, a textbook section, a set of exam-style questions
+with worked answers, and revision notes, each prompt asking for a
+self-contained text that never refers to the source. 1.6M rewrites, 0.9B
+tokens, 30 shards, about 130 GPU-hours of generation and 95 of logits. The
+0.6B student then trained on the first 15 shards (0.5B tokens, no Apollo
+replay) with the same schedule.
+
+| 0.6B distilled | at 3B | 4B Apollo-only control (b) | + 0.5B rewrites |
+|---|---|---|---|
+| MMLU medical 0 / 3-shot (cloze) | 33.9 / 35.3 | 33.8 / 34.8 | 32.6 / 35.2 |
+| MedQA 0 / 3-shot (cloze) | 30.3 / 31.9 | 30.0 / 29.1 | 30.6 / 29.9 |
+| MMLU medical 0 / 5-shot (answer letter) | 22.9 / 26.8 | 22.5 / 27.2 | 38.0 / 37.5 |
+| MedQA 0 / 5-shot (answer letter) | 24.8 / 27.8 | 25.7 / 27.6 | 33.5 / 33.9 |
+| held-out Apollo loss, shard 31 | 2.535 | 2.511 | 2.683 |
+| held-out PubMed loss, 4 shards (mean) | 2.27 | | 2.38 |
+
+Two separate effects. The cloze scores, which do not depend on the answer
+format, do not move: 0.5B tokens of rewritten Apollo content taught the
+student nothing it could not already retrieve, which is the same null result
+as the fourth Apollo pass in (b). The answer-letter scores jump by 11 to 15
+points on MMLU and 6 to 8 on MedQA. Before this run the 0.6B students were
+at or below chance on that format because of the letter bias described in
+section 4, and the exam-style rewrites taught the format: the letter scores
+now agree with the cloze scores instead of sitting 10 points below them. So
+the rewrites bought format competence, not knowledge, at least at 0.5B
+tokens. The Apollo held-out loss also rose by 0.15 nats, as in (d), because
+no original Apollo text was mixed in. The 1B-token rewrites runs and the
+1.7B results that would show whether the knowledge effect appears with more
+tokens or a larger student did not run (see above).
+
+**Reading.** Across (d), (e) and (f) the exam scores of the 0.6B student
+have not moved from their 3B-token values by any intervention: more raw text
+of a new kind, the same text with replay, or teacher rewrites of the same
+text. Only new Apollo-style tokens moved them (section 8), and that corpus
+is exhausted. The remaining untested levers are a larger student (the 1.7B
+gained 3.6 points more than the 0.6B from the same 3B tokens), rewrites at
+1B tokens and beyond, and rewrites that introduce facts not in the source
+corpus. The replay result settles how to add a second corpus without losing
+the first: mix the old data in rather than appending.

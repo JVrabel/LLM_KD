@@ -808,3 +808,16 @@ cannot raise a running job's limit). Added a 3 h third job 8692042
 (afterany:8654431, RESUME_LATEST=1) and re-gated the exam/sweeps
 8654432–8654434 onto it. The 1.7B continuation 8654436 is blocked by the GRES
 minute cap. Watcher excludes the expected TIMEOUT of 8654431.
+
+22 Nov 2026 11:30 UTC: results for the two finished 0.6B runs copied to
+reports/pilot_results (exam json) and reports/pilot_results/diag (sweeps);
+report section 10 written. Replay 0.6B: MMLU cloze 33.4/35.2, MedQA
+29.6/29.3, Apollo shard 31 2.528, PubMed mean 2.09 (no forgetting, no exam
+gain). Rewrites 0.6B 0.5B: cloze unchanged (32.6/35.2, 30.6/29.9), letter
+exams 38.0/37.5 and 33.5/33.9 (format learned), Apollo shard 31 2.683.
+Cluster: GPU-minute cap and now the CPU-minute cap (`AssocGrpCPUMinutesLimit`,
+cpu usage 4,587,578 min) both reached; even 15-minute exam jobs for the
+finished 1.7B rewrites 0.5B checkpoint (runs/pilot_1.7b_rewrites_kd_05b/
+step_0106810.pt) will not start. The 0.6B 1B, 1.7B 1B and 1.7B replay jobs
+remain queued and will run only if BriCS raises the limits. logs/ is being
+rsynced to ~/Projects/LLM_KD_backup/logs on Marek's laptop.
