@@ -35,6 +35,9 @@ MAX_LEN = 2048
 BATCH = 8
 LETTERS = "ABCD"
 CLOZE_SHOTS = 3
+# 22 Nov 2026: runs on CUDA, Apple MPS or CPU so finished checkpoints can be
+# examined off the cluster; autocast only on CUDA (the model is bf16 anyway).
+DEVICE = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
 SUBJECTS = {
     "anatomy": "anatomy",
     "clinical_knowledge": "clinical knowledge",
@@ -96,15 +99,27 @@ def letter_ids(tokenizer):
     return ids
 
 
+def load_state(path):
+    """A training checkpoint, or a model-only export directory from
+    scripts/export_model_weights.py (meta.pt plus part-NN.pt, 22 Nov 2026)."""
+    if not os.path.isdir(path):
+        return torch.load(path, map_location="cpu", weights_only=False)
+    state = torch.load(os.path.join(path, "meta.pt"), map_location="cpu", weights_only=False)
+    state["model"] = {}
+    for n in range(state["parts"]):
+        state["model"].update(torch.load(os.path.join(path, f"part-{n:02d}.pt"), map_location="cpu", weights_only=False))
+    return state
+
+
 def load_model(path):
-    state = torch.load(path, map_location="cpu", weights_only=False)
+    state = load_state(path)
     trainer = train_kd()
     model = trainer.build_student(trainer.config_for_checkpoint(state), for_training=False)
     model.load_state_dict(state["model"])
     size = state.get("model_size", "0.6b")
     del state
     gc.collect()
-    model.to(device="cuda", dtype=torch.bfloat16)
+    model.to(device=DEVICE, dtype=torch.bfloat16)
     model.eval()
     print(f"loaded student {size}", flush=True)
     return model
@@ -121,7 +136,7 @@ def predict(model, tokenizer, prompts, choices):
         encoded.append(ids)
         kept.append(index)
     picks = {}
-    choice_ids = torch.tensor(choices, device="cuda")
+    choice_ids = torch.tensor(choices, device=DEVICE)
     for start in range(0, len(encoded), BATCH):
         chunk = encoded[start:start + BATCH]
         width = max(len(ids) for ids in chunk)
@@ -131,8 +146,8 @@ def predict(model, tokenizer, prompts, choices):
             pad = width - len(ids)
             input_ids.append([EOS] * pad + ids)
             mask.append([0] * pad + [1] * len(ids))
-        tokens = torch.tensor(input_ids, device="cuda")
-        attention = torch.tensor(mask, device="cuda")
+        tokens = torch.tensor(input_ids, device=DEVICE)
+        attention = torch.tensor(mask, device=DEVICE)
         with torch.inference_mode():
             logits = model(input_ids=tokens, attention_mask=attention).logits[:, -1, :]
         chosen = torch.argmax(logits.index_select(-1, choice_ids), dim=-1)
@@ -172,12 +187,12 @@ def cloze_scores(model, tokenizer, items):
         group = order[start:start + BATCH * 2]
         width = max(len(seqs[k][0]) for k in group)
         input_ids = torch.tensor(
-            [[EOS] * (width - len(seqs[k][0])) + seqs[k][0] for k in group], device="cuda",
+            [[EOS] * (width - len(seqs[k][0])) + seqs[k][0] for k in group], device=DEVICE,
         )
         mask = torch.tensor(
-            [[0] * (width - len(seqs[k][0])) + [1] * len(seqs[k][0]) for k in group], device="cuda",
+            [[0] * (width - len(seqs[k][0])) + [1] * len(seqs[k][0]) for k in group], device=DEVICE,
         )
-        with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
+        with torch.inference_mode(), torch.autocast(DEVICE if DEVICE != "mps" else "cpu", dtype=torch.bfloat16, enabled=DEVICE == "cuda"):
             hidden = model.model(input_ids=input_ids, attention_mask=mask, use_cache=False).last_hidden_state
         for row, k in enumerate(group):
             n_opt = seqs[k][1]
@@ -229,6 +244,7 @@ def main():
     parser.add_argument("--checkpoint", default=CHECKPOINT)
     parser.add_argument("--tokenizer", default=TOKENIZER)
     parser.add_argument("--mmlu-dir", default=MMLU_DIR)
+    parser.add_argument("--medqa-dir", default=os.path.dirname(MEDQA_TEST))
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
@@ -296,8 +312,8 @@ def main():
     summary["mmlu"][f"cloze_{CLOZE_SHOTS}-shot"] = cloze
     print(f"MMLU cloze {CLOZE_SHOTS}-shot", json.dumps(cloze), flush=True)
 
-    test = load_jsonl(MEDQA_TEST)
-    train = load_jsonl(MEDQA_TRAIN, limit=5)
+    test = load_jsonl(os.path.join(args.medqa_dir, os.path.basename(MEDQA_TEST)))
+    train = load_jsonl(os.path.join(args.medqa_dir, os.path.basename(MEDQA_TRAIN)), limit=5)
     shots = [
         (row["question"], [row["options"][letter] for letter in LETTERS], row["answer_idx"])
         for row in train
