@@ -123,7 +123,8 @@ def load_model(path):
     size = state.get("model_size", "0.6b")
     del state
     gc.collect()
-    model.to(device=DEVICE, dtype=torch.bfloat16)
+    # bf16 matmuls are emulated and very slow on CPU; use fp32 there.
+    model.to(device=DEVICE, dtype=torch.bfloat16 if DEVICE == "cuda" else torch.float32)
     model.eval()
     print(f"loaded student {size}", flush=True)
     return model
