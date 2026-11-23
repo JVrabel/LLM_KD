@@ -855,3 +855,9 @@ copy (51 files). The 1.7B rewrites 0.5B exam is running on the laptop CPU
 (results/rewrites_1.7b_05b_step106810_mmlu.json when done). Nothing else
 needs the cluster; the remaining cluster data (logits, full checkpoints,
 packs) is abandoned when access ends on 24 Nov.
+
+23 Nov 2026 10:00 UTC: backup verified by md5 on both sides, 51 of 51 files
+identical (one part file had been corrupted by an interrupted parallel rsync
+with --partial and was re-pulled). Laptop exams: CPU fp32 only; bf16 matmul
+on the M5 CPU is emulated and 2,000x slower (10 s per 1024x2048x2048). The
+1.7B rewrites 0.5B exam runs at about 6 prompts/s on 0-shot MMLU.
