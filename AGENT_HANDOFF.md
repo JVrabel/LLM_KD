@@ -833,3 +833,17 @@ directory and runs on CUDA, Apple MPS or CPU. Laptop copies go to
 ~/Projects/LLM_KD_backup/{logs,models,eval_data,tokenizer}; transfer runs at
 about 10 MB/s. The 0.6B NTP student was never continued to 3B, so there is
 no checkpoint for it beyond the 1B runs.
+
+23 Nov 2026 01:00 UTC: Jakub (22 Nov): the Isambard project had 10k GPU-hours
+in total and they are exhausted (his own extra jobs included); no extension
+expected; access ends 24 Nov. The queued 1B rewrites runs and the 1.7B
+replay continuation will not run. Backup to ~/Projects/LLM_KD_backup on
+Marek's laptop: logs/ (193 MB, done), the rewrites corpus
+(corpus/rewrites_clean_jsonl.tar.gz, 1.5 GB, done: ten part*.clean.jsonl plus
+the pack meta.json), the 13 weight exports (models/, 43 GB, in progress).
+Logits and full checkpoints are abandoned. Laptop exam pipeline:
+venv ~/Projects/LLM_KD_backup/venv-eval (torch 2.8, transformers 4.57),
+eval_data/ and tokenizer/ copied from the cluster; run with
+STUDENT_DEVICE=cpu, since MPS gives wrong letter picks (23.5% vs 37.5% on
+200 questions; CPU fp32 matches the cluster). The 1.7B rewrites 0.5B exam
+is to be run locally once models/pilot_1.7b_rewrites_kd_05b_* arrives.
