@@ -37,7 +37,11 @@ LETTERS = "ABCD"
 CLOZE_SHOTS = 3
 # 22 Nov 2026: runs on CUDA, Apple MPS or CPU so finished checkpoints can be
 # examined off the cluster; autocast only on CUDA (the model is bf16 anyway).
-DEVICE = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
+# STUDENT_DEVICE overrides the choice. 23 Nov 2026: on Apple MPS the Qwen3
+# forward with left padding gives wrong letter picks (23.5% vs 37.5% for the
+# same prompts on CPU fp32, which matches the cluster), so off the cluster use
+# STUDENT_DEVICE=cpu.
+DEVICE = os.environ.get("STUDENT_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
 SUBJECTS = {
     "anatomy": "anatomy",
     "clinical_knowledge": "clinical knowledge",
@@ -149,7 +153,9 @@ def predict(model, tokenizer, prompts, choices):
         tokens = torch.tensor(input_ids, device=DEVICE)
         attention = torch.tensor(mask, device=DEVICE)
         with torch.inference_mode():
-            logits = model(input_ids=tokens, attention_mask=attention).logits[:, -1, :]
+            # Only the last position is needed; full-sequence logits over the 248k
+            # vocabulary exhaust memory off the cluster.
+            logits = model(input_ids=tokens, attention_mask=attention, logits_to_keep=1).logits[:, -1, :]
         chosen = torch.argmax(logits.index_select(-1, choice_ids), dim=-1)
         for offset, letter in enumerate(chosen.tolist()):
             picks[kept[start + offset]] = letter
