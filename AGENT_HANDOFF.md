@@ -861,3 +861,13 @@ identical (one part file had been corrupted by an interrupted parallel rsync
 with --partial and was re-pulled). Laptop exams: CPU fp32 only; bf16 matmul
 on the M5 CPU is emulated and 2,000x slower (10 s per 1024x2048x2048). The
 1.7B rewrites 0.5B exam runs at about 6 prompts/s on 0-shot MMLU.
+
+23 Nov 2026 11:10 UTC: Marek chose to leave the 1.7B rewrites 0.5B exam
+unmeasured for now; the laptop run was stopped. To run it later (2–4 h on
+the M5 CPU, keep the laptop open):
+  cd ~/Projects/LLM_KD_backup && STUDENT_DEVICE=cpu ./venv-eval/bin/python \
+    ~/Projects/LLM_KD/scripts/isambard/student_mmlu.py \
+    --checkpoint models/pilot_1.7b_rewrites_kd_05b_step_0106810_model_bf16 \
+    --tokenizer tokenizer --mmlu-dir eval_data/mmlu_medical \
+    --medqa-dir eval_data/GBaker__MedQA-USMLE-4-options \
+    --out results/rewrites_1.7b_05b_step106810_mmlu.json
