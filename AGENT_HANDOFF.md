@@ -847,3 +847,11 @@ eval_data/ and tokenizer/ copied from the cluster; run with
 STUDENT_DEVICE=cpu, since MPS gives wrong letter picks (23.5% vs 37.5% on
 200 questions; CPU fp32 matches the cluster). The 1.7B rewrites 0.5B exam
 is to be run locally once models/pilot_1.7b_rewrites_kd_05b_* arrives.
+
+23 Nov 2026 09:00 UTC: backup complete. ~/Projects/LLM_KD_backup holds
+logs/ (193 MB), corpus/rewrites_clean_jsonl.tar.gz (1.5 GB) and models/
+with all 13 weight exports (43 GB); every file's size matches the cluster
+copy (51 files). The 1.7B rewrites 0.5B exam is running on the laptop CPU
+(results/rewrites_1.7b_05b_step106810_mmlu.json when done). Nothing else
+needs the cluster; the remaining cluster data (logits, full checkpoints,
+packs) is abandoned when access ends on 24 Nov.
